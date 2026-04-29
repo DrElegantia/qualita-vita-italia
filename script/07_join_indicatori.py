@@ -305,8 +305,10 @@ def main() -> int:
     df.to_csv(out_csv, index=False)
     log.info("scritto %s (%d comuni)", out_csv, len(df))
 
-    # Output JSON compatto per dashboard (solo comuni con OMI)
-    df_dash = df[df["affitto_eur_mq_mese_med"].notna()].copy()
+    # Output JSON: TUTTI i comuni (anche senza OMI). Flag omi_disponibile
+    # permette al frontend di gestire gracefully i casi senza prezzi/affitti.
+    df_dash = df.copy()
+    df_dash["omi_disponibile"] = df_dash["affitto_eur_mq_mese_med"].notna()
     cols_essenziali = [
         "codice_istat", "comune", "sigla_provincia", "regione",
         "n_contribuenti", "reddito_mediana", "reddito_p10", "reddito_p90",
@@ -314,7 +316,7 @@ def main() -> int:
         "prezzo_acq_eur_mq_med", "affitto_eur_mq_mese_med",
         "rs_single_affitto", "rs_coppia_affitto", "rs_coppia_2f_affitto",
         "residuo_single_affitto", "residuo_coppia_2f_affitto",
-        "indice_qualita",
+        "indice_qualita", "omi_disponibile",
     ]
     cols_present = [c for c in cols_essenziali if c in df_dash.columns]
     payload = {
@@ -326,7 +328,8 @@ def main() -> int:
             "profili": {k: v for k, v in PROFILI.items()},
             "paniere_non_casa": PANIERE_NON_CASA,
         },
-        "comuni": df_dash[cols_present].to_dict(orient="records"),
+        "comuni": df_dash[cols_present].astype(object).where(
+            pd.notna(df_dash[cols_present]), None).to_dict(orient="records"),
     }
     out_json = OUT_DATA / "comuni.json"
     out_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2))

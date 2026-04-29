@@ -755,10 +755,24 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
           <p><?php lc_e('Quanto reddito lordo familiare serve per coprire le spese in un comune scelto? Combina paniere ISTAT non-casa stimato per profilo + costo casa OMI + IRPEF/addizionali stimati.'); ?></p>
         </div>
         <div class="mt-6 grid md:grid-cols-3 gap-4">
-          <label class="text-sm"><?php lc_e('Comune'); ?>
-            <select id="qvi-calc-comune" class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"></select>
+          <label class="text-sm"><?php lc_e('Regione'); ?>
+            <select id="qvi-calc-regione" class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
+              <option value=""><?php lc_e('Seleziona regione…'); ?></option>
+            </select>
           </label>
-          <label class="text-sm"><?php lc_e('Profilo'); ?>
+          <label class="text-sm"><?php lc_e('Provincia'); ?>
+            <select id="qvi-calc-provincia" class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm" disabled>
+              <option value=""><?php lc_e('Prima la regione'); ?></option>
+            </select>
+          </label>
+          <label class="text-sm"><?php lc_e('Comune'); ?>
+            <select id="qvi-calc-comune" class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm" disabled>
+              <option value=""><?php lc_e('Prima la provincia'); ?></option>
+            </select>
+          </label>
+        </div>
+        <div class="mt-3 grid md:grid-cols-2 gap-4">
+          <label class="text-sm"><?php lc_e('Profilo familiare'); ?>
             <select id="qvi-calc-profilo" class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
               <option value="single">1 adulto</option>
               <option value="coppia" selected>Coppia, 1 stipendio</option>
@@ -767,7 +781,7 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
               <option value="coppia_2f">Coppia + 2 figli, 2 stip.</option>
             </select>
           </label>
-          <label class="text-sm"><?php lc_e('Casa'); ?>
+          <label class="text-sm"><?php lc_e('Modalità casa'); ?>
             <select id="qvi-calc-modalita" class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
               <option value="affitto" selected>Affitto</option>
               <option value="proprieta">Già proprietario</option>
@@ -865,15 +879,54 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
     const regSel = document.getElementById("qvi-regione");
     for(const r of regioni) {{ const o=document.createElement("option"); o.value=r; o.text=r; regSel.appendChild(o); }}
 
-    // Comuni dropdown calc
-    const comuneSel = document.getElementById("qvi-calc-comune");
-    [...COMUNI].sort((a,b)=>a.comune.localeCompare(b.comune)).forEach(c => {{
-      const o=document.createElement("option"); o.value=c.codice_istat; o.text=c.comune+" ("+c.sigla_provincia+")"; comuneSel.appendChild(o);
-    }});
+    // Cascata Regione → Provincia → Comune (alfabetico in ogni step)
+    const regCalc = document.getElementById("qvi-calc-regione");
+    const provCalc = document.getElementById("qvi-calc-provincia");
+    const comCalc = document.getElementById("qvi-calc-comune");
+    regioni.forEach(r => {{ const o=document.createElement("option"); o.value=r; o.text=r; regCalc.appendChild(o); }});
+    function popolaProvince() {{
+      const reg = regCalc.value;
+      provCalc.innerHTML = "";
+      comCalc.innerHTML = "";
+      comCalc.disabled = true;
+      if (!reg) {{
+        provCalc.innerHTML = '<option value="">Prima la regione</option>';
+        provCalc.disabled = true;
+        comCalc.innerHTML = '<option value="">Prima la provincia</option>';
+        return;
+      }}
+      const provs = [...new Set(COMUNI.filter(c => c.regione === reg).map(c => c.sigla_provincia))].sort();
+      provCalc.innerHTML = '<option value="">Seleziona provincia…</option>';
+      provs.forEach(p => {{ const o=document.createElement("option"); o.value=p; o.text=p; provCalc.appendChild(o); }});
+      provCalc.disabled = false;
+      comCalc.innerHTML = '<option value="">Prima la provincia</option>';
+    }}
+    function popolaComuni() {{
+      const reg = regCalc.value, prov = provCalc.value;
+      comCalc.innerHTML = "";
+      if (!reg || !prov) {{
+        comCalc.innerHTML = '<option value="">Prima la provincia</option>';
+        comCalc.disabled = true;
+        return;
+      }}
+      const subset = COMUNI.filter(c => c.regione === reg && c.sigla_provincia === prov)
+                           .sort((a,b)=>a.comune.localeCompare(b.comune));
+      comCalc.innerHTML = '<option value="">Seleziona comune…</option>';
+      subset.forEach(c => {{
+        const o=document.createElement("option");
+        o.value=c.codice_istat;
+        o.text = c.comune + (c.omi_disponibile ? "" : " · OMI non disponibile");
+        comCalc.appendChild(o);
+      }});
+      comCalc.disabled = false;
+    }}
+    regCalc.addEventListener("change", () => {{ popolaProvince(); }});
+    provCalc.addEventListener("change", () => {{ popolaComuni(); }});
 
     function buildMap(filtro) {{
-      const subset = COMUNI.filter(c => CENTROIDI[c.codice_istat] && (!filtro || c.regione===filtro));
       const indic = document.getElementById("qvi-indicatore").value;
+      // Solo comuni con centroide + valore presente per l'indicatore selezionato
+      const subset = COMUNI.filter(c => CENTROIDI[c.codice_istat] && c[indic] != null && (!filtro || c.regione===filtro));
       const z = subset.map(c => c[indic]);
       const text = subset.map(c =>
         `<b>${{c.comune}}</b> (${{c.sigla_provincia}})<br>` +
@@ -918,14 +971,22 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
 
     // Calcolatore
     function calcola() {{
-      const cod=document.getElementById("qvi-calc-comune").value;
+      const cod=comCalc.value;
       const profKey=document.getElementById("qvi-calc-profilo").value;
       const modalita=document.getElementById("qvi-calc-modalita").value;
-      const c=COMUNI.find(x=>x.codice_istat===cod); const p=PROFILI[profKey];
-      if(!c||!p) {{ document.getElementById("qvi-calc-out").textContent="Seleziona un comune."; return; }}
+      const c=cod?COMUNI.find(x=>x.codice_istat===cod):null;
+      const p=PROFILI[profKey];
+      if(!c||!p) {{ document.getElementById("qvi-calc-out").textContent="Seleziona regione, provincia e comune per vedere il calcolo."; return; }}
       const paniere=PANIERE[profKey];
       const casa=costoCasaAnnuo(p,modalita,c.affitto_eur_mq_mese_med,c.prezzo_acq_eur_mq_med);
-      if(casa==null) {{ document.getElementById("qvi-calc-out").innerHTML="<i>Dati casa non disponibili per "+c.comune+".</i>"; return; }}
+      if(casa==null) {{
+        document.getElementById("qvi-calc-out").innerHTML =
+          '<div class="font-semibold">'+c.comune+' ('+c.sigla_provincia+')</div>' +
+          '<div class="mt-2 italic text-slate-600">Dato OMI non ancora caricato per questo comune. ' +
+          'Bulk OMI in corso: i piccoli comuni vengono ricaricati progressivamente. ' +
+          'Prova "Già proprietario" per una stima senza affitto.</div>';
+        return;
+      }}
       const spesa=paniere+casa;
       const lordo=lordoPerNetto(spesa,p.figli,p.percettori);
       const nettoMediana=nettoDaLordo(c.reddito_mediana||0,p.figli);
@@ -944,7 +1005,8 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
         `<div class="mt-3 inline-block px-3 py-1.5 rounded-lg font-semibold ${{colorClass}}">Residuo annuo dalla mediana: ${{fmt(residuo)}}</div>`;
       simulaReddito();
     }}
-    document.getElementById("qvi-calc-comune").addEventListener("change", calcola);
+    // Cambiare comune nel calcolatore aggiorna anche dettaglio + simulatore
+    comCalc.addEventListener("change", () => {{ calcola(); if(comCalc.value) mostraDettaglio(comCalc.value); }});
     document.getElementById("qvi-calc-profilo").addEventListener("change", calcola);
     document.getElementById("qvi-calc-modalita").addEventListener("change", calcola);
 
