@@ -185,7 +185,8 @@ DASHBOARD_TEMPLATE = """<!DOCTYPE html>
 </div>
 
 <h2>Calcolatore reddito sostenibile</h2>
-<p>Quanto reddito lordo familiare serve per coprire le spese in un comune scelto, dato un profilo familiare?</p>
+<p>Quanto reddito lordo familiare serve per coprire le spese in un comune scelto, dato un profilo familiare?
+Sotto il calcolo "quanto serve" puoi anche <b>simulare un tuo reddito</b> e vedere quanto resta in regime IRPEF ordinario o flat tax 15% (forfettario).</p>
 <div class="calc">
   <div class="calc-row">
     <label for="calc-comune">Comune:</label>
@@ -205,6 +206,26 @@ DASHBOARD_TEMPLATE = """<!DOCTYPE html>
     </select>
   </div>
   <div id="calc-out" class="calc-out">Seleziona un comune per vedere il calcolo.</div>
+
+  <div style="border-top: 1px solid #e5e5e5; margin-top: 1rem; padding-top: 0.8rem;">
+    <div class="calc-row">
+      <label for="sim-reddito">Simula il tuo reddito imponibile lordo (€/anno):</label>
+      <input type="number" id="sim-reddito" min="0" max="500000" step="1000" value="30000" style="width: 140px; padding: 0.3rem;">
+      <label for="sim-regime">Regime:</label>
+      <select id="sim-regime">
+        <option value="ordinario" selected>IRPEF ordinario (dipendente)</option>
+        <option value="flat15">Flat tax 15% (forfettario)</option>
+        <option value="flat5">Flat tax 5% (forfettario startup, primi 5 anni)</option>
+      </select>
+    </div>
+    <div id="sim-out" class="calc-out" style="background: #eef2f7;">Inserisci un reddito per simulare.</div>
+    <p style="font-size: 0.78rem; color: #666; margin-top: 0.5rem;">
+      Note: l'imponibile IRPEF è già al netto dei contributi previdenziali. Per il regime ordinario applichiamo
+      IRPEF a scaglioni 23/35/43% + detrazioni dipendente + addizionali regionale e comunale medie. Per il
+      forfettario applichiamo l'imposta sostitutiva sull'imponibile (no addizionali, no detrazioni).
+      Il regime forfettario richiede ricavi entro <b>85.000 €/anno</b>: oltre questa soglia non è applicabile.
+    </p>
+  </div>
 </div>
 
 <h2>Dettaglio comune</h2>
@@ -246,6 +267,13 @@ function nettoDaLordo(lordo, nFigli) {
   const ip = Math.max(0, irpefLorda(lordo) - detrazioneDip(lordo) - nFigli * DETR_FIG);
   const add = lordo * (ADD_REG + ADD_COM);
   return lordo - ip - add;
+}
+// Regime forfettario: imposta sostitutiva (15% std, 5% startup), no detrazioni, no addizionali.
+// Soglia max ricavi forfettario: 85.000 €/anno.
+const FLAT_LIMIT = 85000;
+function nettoFlatTax(lordo, aliquota) {
+  if (lordo > FLAT_LIMIT) return null;
+  return lordo * (1 - aliquota);
 }
 function lordoPerNetto(nettoTarget, nFigli, nPercettori) {
   if (nettoTarget <= 0) return 0;
@@ -373,6 +401,77 @@ document.getElementById("calc-comune").addEventListener("change", calcola);
 document.getElementById("calc-profilo").addEventListener("change", calcola);
 document.getElementById("calc-modalita").addEventListener("change", calcola);
 
+function simulaReddito() {
+  const cod = document.getElementById("calc-comune").value;
+  const profKey = document.getElementById("calc-profilo").value;
+  const modalita = document.getElementById("calc-modalita").value;
+  const regime = document.getElementById("sim-regime").value;
+  const reddito = parseFloat(document.getElementById("sim-reddito").value) || 0;
+  const c = COMUNI.find(x => x.codice_istat === cod);
+  const p = PROFILI[profKey];
+  if (!c || !p) { document.getElementById("sim-out").innerHTML = "Seleziona un comune."; return; }
+  const paniere = PANIERE[profKey];
+  const casa = costoCasaAnnuo(p, modalita, c.affitto_eur_mq_mese_med, c.prezzo_acq_eur_mq_med);
+  const spesa = casa != null ? paniere + casa : null;
+
+  // Calcolo netto per entrambi i regimi (per il confronto)
+  const nettoOrd = nettoDaLordo(reddito, p.figli);
+  const nettoF15 = nettoFlatTax(reddito, 0.15);
+  const nettoF05 = nettoFlatTax(reddito, 0.05);
+  const nettoSel = regime === "ordinario" ? nettoOrd
+                 : regime === "flat15"   ? nettoF15
+                                          : nettoF05;
+  const labelRegime = regime === "ordinario" ? "IRPEF ordinario"
+                    : regime === "flat15"   ? "Flat tax 15%"
+                                              : "Flat tax 5% (startup)";
+
+  // Avviso forfettario se sopra soglia
+  let avviso = "";
+  if (regime !== "ordinario" && reddito > FLAT_LIMIT) {
+    avviso = `<div style="background: #ffd6d6; padding: 0.5rem; margin-top: 0.5rem; border-radius: 4px; font-size: 0.85rem;">` +
+      `⚠ Sopra soglia forfettario (${fmt(FLAT_LIMIT)}). In regime ordinario, netto: <b>${fmt(nettoOrd)}</b>.</div>`;
+  }
+
+  let residuoBlock = "";
+  if (spesa != null && nettoSel != null) {
+    const residuo = nettoSel - spesa;
+    const colore = residuo > 0 ? "badge-good" : "badge-bad";
+    residuoBlock = `<br>Spesa annua nel comune: <b>${fmt(spesa)}</b> ` +
+                   `(casa ${fmt(casa)} + paniere ${fmt(paniere)})<br>` +
+                   `<span class="badge ${colore}">Residuo netto annuo: ${fmt(residuo)}</span>`;
+  } else if (spesa == null) {
+    residuoBlock = `<br><i>Dato OMI casa non disponibile per ${c.comune}.</i>`;
+  }
+
+  let confrontoBlock = "";
+  if (reddito <= FLAT_LIMIT) {
+    const diff = (nettoF15 || 0) - nettoOrd;
+    const segno = diff >= 0 ? "+" : "";
+    confrontoBlock =
+      `<br><br><div style="font-size: 0.9rem;"><b>Confronto regimi su ${fmt(reddito)} lordo:</b><br>` +
+      `· IRPEF ordinario → netto <b>${fmt(nettoOrd)}</b> (aliquota effettiva ${((1 - nettoOrd / reddito) * 100).toFixed(1)}%)<br>` +
+      `· Flat tax 15%   → netto <b>${fmt(nettoF15)}</b> ` +
+      `<span class="badge ${diff >= 0 ? 'badge-good' : 'badge-bad'}">${segno}${fmt(diff)} vs ordinario</span><br>` +
+      `· Flat tax 5%    → netto <b>${fmt(nettoF05)}</b> (solo startup, primi 5 anni)</div>`;
+  } else {
+    confrontoBlock = `<br><br><div style="font-size: 0.9rem;"><b>Sopra ${fmt(FLAT_LIMIT)}: solo regime ordinario applicabile.</b><br>` +
+      `Netto ordinario: <b>${fmt(nettoOrd)}</b> (aliquota effettiva ${((1 - nettoOrd / reddito) * 100).toFixed(1)}%)</div>`;
+  }
+
+  document.getElementById("sim-out").innerHTML =
+    `<b>Simulazione: ${fmt(reddito)} imponibile in ${c.comune} (${c.sigla_provincia})</b><br>` +
+    `Profilo: ${p.label}, ${p.mq} mq, ${modalita}, regime <b>${labelRegime}</b><br><br>` +
+    `Reddito netto stimato (regime selezionato): <b>${fmt(nettoSel)}</b>` +
+    residuoBlock +
+    avviso +
+    confrontoBlock;
+}
+document.getElementById("sim-reddito").addEventListener("input", simulaReddito);
+document.getElementById("sim-regime").addEventListener("change", simulaReddito);
+document.getElementById("calc-comune").addEventListener("change", simulaReddito);
+document.getElementById("calc-profilo").addEventListener("change", simulaReddito);
+document.getElementById("calc-modalita").addEventListener("change", simulaReddito);
+
 // =====================  Dettaglio comune  =====================
 function mostraDettaglio(cod) {
   const c = COMUNI.find(x => x.codice_istat === cod);
@@ -401,7 +500,11 @@ function mostraDettaglio(cod) {
 }
 
 // init calcolatore
-if (COMUNI.length) { document.getElementById("calc-comune").value = COMUNI[0].codice_istat; calcola(); }
+if (COMUNI.length) {
+  document.getElementById("calc-comune").value = COMUNI[0].codice_istat;
+  calcola();
+  simulaReddito();
+}
 </script>
 </body>
 </html>
@@ -460,7 +563,81 @@ def build_dashboard():
     out_wp = OUT / "wordpress.html"
     out_wp.write_text(wp_html, encoding="utf-8")
     log.info("scritto %s (%.1f KB)", out_wp, out_wp.stat().st_size / 1024)
+
+    # Template WP "page-macro-dove-vivere.php" pronto per il tema landing-consulenza
+    # del sito UB. Eredita header/footer del tema, embed inline body+style+js
+    # della dashboard. Il fetcher OMI lazy (omi-fetcher.php) e' caricato a parte
+    # via functions.php per gli endpoint AJAX qvi_omi_zone_comune / qvi_omi_zona_dati.
+    page_macro = build_wp_page_template(payload, wp_html, anno, sem, n_comuni)
+    wp_dir = ROOT / "wp-integration"
+    wp_dir.mkdir(exist_ok=True)
+    out_page = wp_dir / "page-macro-dove-vivere.php"
+    out_page.write_text(page_macro, encoding="utf-8")
+    log.info("scritto %s (%.1f KB)", out_page, out_page.stat().st_size / 1024)
     return 0
+
+
+def build_wp_page_template(payload: dict, wp_html: str, anno, sem, n_comuni: int) -> str:
+    """Genera il template PHP page-macro-dove-vivere.php per il tema UB.
+    Aderisce al pattern delle altre page-macro-*.php del tema landing-consulenza:
+    full HTML standalone (no get_header/get_footer), lc_seo_head per SEO,
+    Plotly via CDN nel head, body con classe macro-page."""
+    title = "Dove si vive bene in Italia: indice qualità della vita per comune"
+    desc = (f"Reddito mediano (MEF), prezzi case e affitti OMI, costo della vita stimato per "
+            f"{n_comuni}+ comuni italiani. Mappa interattiva, classifica top/bottom 30, "
+            f"calcolatore reddito sostenibile e simulatore IRPEF ordinario vs flat tax. "
+            f"Dati MEF {anno} + OMI semestre {sem}.")
+    slug = "dove-vivere"
+    return f"""<?php
+/*
+Template Name: Macro Dove vivere
+Template Post Type: page
+*/
+if (!defined('ABSPATH')) exit;
+
+global $lc_custom_og;
+$lc_custom_og = true;
+$_lang = lc_get_lang();
+
+$site_name  = get_bloginfo('name');
+$page_title = lc__({title!r});
+$full_title = $page_title . ' | ' . $site_name;
+
+$desc = lc__({desc!r});
+
+$permalink = home_url('/macro/{slug}/');
+$canonical = $permalink;
+
+$og_image = function_exists('lc_og_image_url')
+  ? lc_og_image_url($page_title, '{slug}')
+  : '';
+
+$share_url   = $permalink;
+$share_title = $page_title;
+?><!doctype html>
+<html lang="<?php echo $_lang; ?>">
+<head>
+  <meta charset="<?php bloginfo('charset'); ?>" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <?php lc_seo_head([
+    'title'       => $page_title,
+    'description' => $desc,
+    'url'         => $permalink,
+    'image'       => $og_image,
+    'type'        => 'article',
+    'slug'        => '{slug}',
+  ]); ?>
+  <link rel="preconnect" href="https://cdn.plot.ly" crossorigin>
+
+  <?php wp_head(); ?>
+</head>
+<body <?php body_class('macro-page'); ?>>
+{wp_html}
+<?php wp_footer(); ?>
+</body>
+</html>
+"""
 
 
 if __name__ == "__main__":

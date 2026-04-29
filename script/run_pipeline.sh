@@ -41,7 +41,16 @@ fi
 log "Step 2: ETL redditi (quartili+decili per comune)"
 python3 script/02_etl_redditi.py 2>&1 | tee -a "$LOG_FILE"
 
-# Step 3-7 (OMI, ISTAT IPC, criminalita, servizi, indice qualita) saranno aggiunti
-# nelle fasi F2-F4 della roadmap. La pipeline corrente copre solo F1.
+# Step OMI: scarica solo i comuni nuovi/non-cached. Cache su 90 giorni semestrali,
+# auto-rollover quando il semestre OMI cambia.
+log "Step 3: ETL OMI (lazy fetch, default top 1500 per popolazione)"
+COMUNI_OMI="${COMUNI_OMI:-1500}"
+python3 script/03_etl_omi.py --comuni "$COMUNI_OMI" 2>&1 | tee -a "$LOG_FILE"
+
+log "Step 7: join indicatori + calcolo reddito sostenibile + indice qualita"
+python3 script/07_join_indicatori.py 2>&1 | tee -a "$LOG_FILE"
+
+log "Step 8: build dashboard HTML standalone + template WP"
+python3 script/08_build_dashboard.py 2>&1 | tee -a "$LOG_FILE"
 
 log "=== pipeline OK ==="
