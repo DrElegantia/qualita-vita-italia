@@ -126,6 +126,11 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
               <option value=""><?php lc_e('Tutte'); ?></option>
             </select>
           </label>
+          <label class="text-sm"><?php lc_e('Provincia'); ?>
+            <select id="qvi-provincia" class="ml-2 rounded border border-slate-300 px-2 py-1 text-sm" disabled>
+              <option value=""><?php lc_e('Tutte'); ?></option>
+            </select>
+          </label>
           <label class="text-sm"><?php lc_e('Visualizza'); ?>
             <select id="qvi-scope" class="ml-2 rounded border border-slate-300 px-2 py-1 text-sm">
               <option value="big" selected>Capoluoghi e città grandi (≥40k contribuenti)</option>
@@ -240,15 +245,56 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
         <div id="qvi-dettaglio-body" class="mt-6 text-sm text-slate-700"><?php lc_e('Clicca un punto sulla mappa o un comune in classifica per vedere i dettagli.'); ?></div>
       </section>
 
+      <!-- 6. METODOLOGIA INDICE QUALITÀ -->
+      <section class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
+        <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('6. Come si calcola l\'indice qualità'); ?></h2>
+        <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
+          <p><?php lc_e('L\'indice è un punteggio 0-100 calcolato per ogni comune che combina due dimensioni: <strong>residuo netto disponibile</strong> dopo aver coperto il costo casa e <strong>accessibilità del costo casa</strong> rispetto al resto d\'Italia. Pesi default: 60% residuo + 40% accessibilità. Quando torneranno disponibili i dati ISTAT (criminalità e BES), i pesi diventeranno 40 / 20 / 20 / 15 / 5.'); ?></p>
+
+          <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e('Formula attuale'); ?></h3>
+          <pre class="rounded-lg bg-slate-900 text-slate-100 p-4 text-xs overflow-x-auto"><code>residuo_netto = mediana_netta − costo_vita_minimo_single
+              = nettoDaLordo(reddito_mediana_comune)
+              − affitto_OMI × 50 mq × 12 mesi
+              − paniere_ISTAT_single (8.400 €/anno)
+
+score_residuo  = normalize(residuo_netto, 5°-95° percentile, 0-100)
+score_casa     = 100 − normalize(prezzo_acquisto_OMI, 5°-95° percentile)
+
+indice_qualita = 0,60 × score_residuo + 0,40 × score_casa</code></pre>
+
+          <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e('Peculiarità e scelte metodologiche'); ?></h3>
+          <ul class="mt-2 space-y-1.5 text-sm">
+            <li><strong>Mediana, non media</strong>: la media è gonfiata da pochi redditi alti. La mediana stimata per interpolazione lineare nelle 8 fasce MEF è il "vero centro" della distribuzione comunale.</li>
+            <li><strong>Reddito netto stimato</strong>: applichiamo IRPEF 2025 a scaglioni (23/35/43%), detrazione dipendente, addizionali regionale 1,73% e comunale 0,5% medie. Approssimazione: in dashboard l'indice ipotizza profilo single senza figli.</li>
+            <li><strong>Costo casa minimo single</strong>: 50 mq × affitto OMI medio comunale × 12 mesi. È il costo casa da affittuario per una persona che vive sola.</li>
+            <li><strong>Paniere non-casa nazionale</strong>: stima ISTAT 2023 spese famiglie escluso voce abitazione (8.400 €/anno per single). Uniforme tra regioni in attesa dell'IPC regionale ISTAT.</li>
+            <li><strong>Normalizzazione robusta</strong>: usiamo 5° e 95° percentile come bounds (non min/max), per non far dominare gli outlier. I comuni più ricchi/poveri saturano a 100 o 0.</li>
+            <li><strong>Inverte il segno sulla casa</strong>: prezzo acquisto basso = score alto (accessibilità). Riccione e Milano vanno in fondo perché il costo casa erode il residuo.</li>
+            <li><strong>Comuni rumorosi</strong>: con &lt; 500 contribuenti la mediana è instabile. Sono nel dropdown ma flaggati nel dettaglio.</li>
+          </ul>
+
+          <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e('Cosa NON misura ancora'); ?></h3>
+          <ul class="mt-2 space-y-1.5 text-sm">
+            <li><strong>Servizi pubblici</strong>: scuole, ospedali, trasporti, banda larga. Indici BES ISTAT provinciali in coda quando l'endpoint SDMX torna up.</li>
+            <li><strong>Sicurezza</strong>: delittuosità ISTAT provinciale (omicidi, furti, rapine, violenze). Stessa coda.</li>
+            <li><strong>Disuguaglianza interna al comune</strong>: il rapporto P90/P10 è già nel payload (visualizzabile come indicatore mappa) ma non pesa ancora nello score finale.</li>
+            <li><strong>Costo della vita non-casa</strong>: il paniere è nazionale. L'IPC regionale ISTAT (Calabria 0,90 vs Bolzano 1,12) non è ancora applicato.</li>
+            <li><strong>Reddito da capitale e patrimoniale</strong>: il MEF dichiarazioni IRPEF non cattura i redditi da capitale tassati separatamente né il patrimonio. Comuni di rentier (Cortina, Capalbio) sono sotto-stimati.</li>
+          </ul>
+
+          <p class="text-sm text-slate-600 mt-4"><?php lc_e('L\'indice è uno strumento descrittivo, non normativo. Non risponde a "dove devo trasferirmi" ma a "dove un reddito mediano si traduce in più residuo dopo il costo casa". Per scelte concrete pesare le proprie priorità: clima, lavoro, famiglia, qualità servizi.'); ?></p>
+        </div>
+      </section>
+
       <!-- FONTI -->
       <section class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
-        <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('Fonti e note metodologiche'); ?></h2>
+        <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('Fonti e codice'); ?></h2>
         <ul class="mt-4 space-y-2 text-sm text-slate-700">
-          <li><strong>MEF Dipartimento delle Finanze</strong>: dichiarazioni IRPEF su base comunale, anno 2024. P10/Q1/mediana/Q3/P90 stimati per interpolazione lineare nelle 8 fasce di reddito complessivo. La fascia >120k è aperta: P95/P99 non ricavabili senza assunzione esterna. Comuni con &lt;500 contribuenti: stime rumorose, segnalate.</li>
-          <li><strong>Agenzia delle Entrate OMI</strong>: quotazioni immobiliari semestre Sem. 2 2025. Mediana sui valori centrali min-max delle zone OMI di ciascun comune, tipologie "Abitazioni civili" + "Abitazioni di tipo economico", stato "Normale".</li>
-          <li><strong>Indice qualità</strong>: 60% residuo netto annuo (mediana netta &minus; spesa minima single in affitto) + 40% accessibilità casa (1 - prezzo acq normalizzato). Estendibile con criminalità e servizi BES (in attesa endpoint ISTAT).</li>
-          <li><strong>IRPEF 2025</strong>: scaglioni 23% / 35% / 43%, detrazioni dipendente, addizionali regionale 1,73% e comunale 0,5% medie. Flat tax forfettario: imposta sostitutiva 15% (5% startup primi 5 anni), no addizionali, no detrazioni, soglia 85k.</li>
-          <li><strong>Codice e dati</strong>: <a href="https://github.com/DrElegantia/qualita-vita-italia" target="_blank" rel="noopener">github.com/DrElegantia/qualita-vita-italia</a> (MIT). Pipeline auto-aggiornante mensile.</li>
+          <li><strong>MEF Dipartimento delle Finanze</strong>: <a href="https://www1.finanze.gov.it/finanze/analisi_stat/public/v_4_0_0/contenuti/" target="_blank" rel="noopener">dichiarazioni IRPEF su base comunale</a>, anno 2024.</li>
+          <li><strong>Agenzia delle Entrate OMI</strong>: <a href="https://wwwt.agenziaentrate.gov.it/geopoi_omi/index.htm" target="_blank" rel="noopener">quotazioni immobiliari</a>, semestre Sem. 2 2025.</li>
+          <li><strong>ISTAT</strong>: <a href="https://www.istat.it/it/files/2024/01/Stat-today_n2_2024.pdf" target="_blank" rel="noopener">consumi delle famiglie 2023</a> (paniere non-casa per profilo).</li>
+          <li><strong>OpenPolis</strong>: <a href="https://github.com/openpolis/geojson-italy" target="_blank" rel="noopener">geometrie comuni</a> per centroidi mappa.</li>
+          <li><strong>Codice sorgente</strong>: <a href="https://github.com/DrElegantia/qualita-vita-italia" target="_blank" rel="noopener">github.com/DrElegantia/qualita-vita-italia</a> (MIT). Pipeline auto-aggiornante mensile, dati MEF e OMI scaricati ai rispettivi semestri/anni di pubblicazione.</li>
         </ul>
       </section>
 
@@ -294,10 +340,36 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
     ].map(([k,v]) => `<div class="rounded-2xl bg-white/70 backdrop-blur border border-white/60 p-4 shadow-sm"><div class="text-xs uppercase tracking-wide text-slate-500">${k}</div><div class="mt-1 text-xl font-semibold text-slate-900">${v}</div></div>`).join("");
     document.getElementById("qvi-kpi").innerHTML = kpiHtml;
 
-    // Regioni dropdown
+    // Regioni + provincia mappa (cascata)
     const regioni = [...new Set(COMUNI.map(c=>c.regione).filter(Boolean))].sort();
     const regSel = document.getElementById("qvi-regione");
+    const provMapSel = document.getElementById("qvi-provincia");
     for(const r of regioni) { const o=document.createElement("option"); o.value=r; o.text=r; regSel.appendChild(o); }
+    function popolaProvinceMappa() {
+      provMapSel.innerHTML = '<option value="">Tutte</option>';
+      const reg = regSel.value;
+      if (!reg) { provMapSel.disabled = true; return; }
+      const provs = (payload.meta.regione_province||{})[reg]
+                    || [...new Set(COMUNI.filter(c=>c.regione===reg).map(c=>c.sigla_provincia))].sort();
+      provs.forEach(p => { const o=document.createElement("option"); o.value=p; o.text=p; provMapSel.appendChild(o); });
+      provMapSel.disabled = false;
+    }
+
+    // Bbox → mapbox center+zoom
+    function bboxToView(bbox) {
+      // bbox: [lat_min, lat_max, lon_min, lon_max]
+      const [latMin, latMax, lonMin, lonMax] = bbox;
+      const lat = (latMin + latMax) / 2;
+      const lon = (lonMin + lonMax) / 2;
+      const span = Math.max(latMax - latMin, (lonMax - lonMin) * 0.7);
+      let zoom = 6;
+      if (span < 0.5) zoom = 9.5;
+      else if (span < 1) zoom = 8.5;
+      else if (span < 2) zoom = 7.5;
+      else if (span < 4) zoom = 7;
+      else if (span < 8) zoom = 6.5;
+      return { center: {lat, lon}, zoom };
+    }
 
     // Cascata Regione → Provincia → Comune (alfabetico in ogni step)
     const regCalc = document.getElementById("qvi-calc-regione");
@@ -344,16 +416,20 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
     provCalc.addEventListener("change", () => { popolaComuni(); });
 
     const SOGLIA_BIG = 40000; // n_contribuenti per "città grande"
-    function buildMap(filtro) {
+    function buildMap() {
       const indic = document.getElementById("qvi-indicatore").value;
       const scope = document.getElementById("qvi-scope").value;
-      // Filtri: centroide + valore presente + (regione opzionale) + (scope: big o all)
-      // Quando una regione e' selezionata, mostra TUTTI i comuni di quella regione
-      // (l'utente ha gia' ristretto). Altrimenti applica scope.
+      const reg = regSel.value;
+      const prov = provMapSel.value;
+      // Filtri:
+      // - se provincia selezionata → solo quella provincia (override scope)
+      // - se regione selezionata (no provincia) → tutti i comuni di quella regione
+      // - altrimenti applica scope (big = capoluoghi grandi, all = tutto)
       const subset = COMUNI.filter(c => {
         if (!CENTROIDI[c.codice_istat]) return false;
         if (c[indic] == null) return false;
-        if (filtro) return c.regione === filtro;
+        if (prov) return c.sigla_provincia === prov;
+        if (reg) return c.regione === reg;
         if (scope === "big") return c.n_contribuenti >= SOGLIA_BIG;
         return true;
       });
@@ -368,21 +444,31 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
       const lats=subset.map(c=>CENTROIDI[c.codice_istat][0]);
       const lons=subset.map(c=>CENTROIDI[c.codice_istat][1]);
       const sizes=subset.map(c=>Math.max(8, Math.min(40, Math.log10(c.n_contribuenti||1000)*6)));
+
+      // View: zoom auto su regione/provincia selezionata
+      let view = { center: {lat: 42.5, lon: 12.5}, zoom: 5.2 };
+      if (prov && payload.meta.bbox_province && payload.meta.bbox_province[prov]) {
+        view = bboxToView(payload.meta.bbox_province[prov]);
+      } else if (reg && payload.meta.bbox_regioni && payload.meta.bbox_regioni[reg]) {
+        view = bboxToView(payload.meta.bbox_regioni[reg]);
+      }
+
       const trace = {
         type:"scattermapbox", mode:"markers", lat:lats, lon:lons,
         marker: { size:sizes, color:z, colorscale: indic==="indice_qualita"||indic.startsWith("residuo")||indic==="reddito_mediana" ? "RdYlGn" : "RdYlGn_r", showscale:true, colorbar:{title:indic, thickness:14, len:0.7} },
         text:text, hovertemplate:"%{text}<extra></extra>",
         customdata: subset.map(c=>c.codice_istat),
       };
-      const layout = { mapbox:{style:"open-street-map", center:{lat:42.5, lon:12.5}, zoom:5.2}, margin:{t:10,b:10,l:10,r:10}, height:560, paper_bgcolor:"rgba(0,0,0,0)" };
+      const layout = { mapbox:{style:"open-street-map", center:view.center, zoom:view.zoom}, margin:{t:10,b:10,l:10,r:10}, height:560, paper_bgcolor:"rgba(0,0,0,0)" };
       Plotly.newPlot("qvi-map", [trace], layout, {displayModeBar:false, responsive:true}).then(gd => {
         gd.on("plotly_click", e => mostraDettaglio(e.points[0].customdata));
       });
     }
-    buildMap("");
-    document.getElementById("qvi-indicatore").addEventListener("change", () => buildMap(regSel.value));
-    document.getElementById("qvi-regione").addEventListener("change", () => buildMap(regSel.value));
-    document.getElementById("qvi-scope").addEventListener("change", () => buildMap(regSel.value));
+    buildMap();
+    document.getElementById("qvi-indicatore").addEventListener("change", buildMap);
+    document.getElementById("qvi-regione").addEventListener("change", () => { popolaProvinceMappa(); buildMap(); });
+    document.getElementById("qvi-provincia").addEventListener("change", buildMap);
+    document.getElementById("qvi-scope").addEventListener("change", buildMap);
 
     // Tabelle
     const sortedDesc = [...COMUNI].filter(c=>c.indice_qualita!=null).sort((a,b)=>b.indice_qualita-a.indice_qualita);
@@ -489,26 +575,65 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
     document.getElementById("qvi-sim-reddito").addEventListener("input", simulaReddito);
     document.getElementById("qvi-sim-regime").addEventListener("change", simulaReddito);
 
+    // Lazy fetch OMI per i comuni non ancora coperti dal bulk
+    const AJAX_URL = '<?php echo esc_js(admin_url("admin-ajax.php")); ?>';
+    function omiBlockHtml(c) {
+      if (c.omi_disponibile && c.prezzo_acq_eur_mq_med != null) {
+        return `<div><div class="text-xs uppercase text-slate-500 tracking-wide">OMI residenziale (${payload.meta.semestre_omi||"—"})</div>` +
+          `<div class="mt-1">Acquisto: <b>${fmt(c.prezzo_acq_eur_mq_med)}/mq</b></div>` +
+          `<div class="mt-1">Affitto: <b>${fmtN(c.affitto_eur_mq_mese_med,2)} €/mq mese</b></div></div>`;
+      }
+      // Placeholder con ID per riempire dopo fetch
+      return `<div><div class="text-xs uppercase text-slate-500 tracking-wide">OMI residenziale</div>` +
+        `<div id="qvi-omi-live" class="mt-1 italic text-slate-500">Caricamento dati OMI live…</div></div>`;
+    }
+    function fetchOmiAggregato(c) {
+      const params = new URLSearchParams({
+        action: 'qvi_omi_aggregato',
+        pr: c.sigla_provincia, comune: c.comune
+      });
+      return fetch(AJAX_URL + '?' + params.toString())
+        .then(r => r.json())
+        .then(j => j && j.success ? j.data : null)
+        .catch(() => null);
+    }
+
     // Dettaglio
     window.mostraDettaglio = function(cod) {
       const c=COMUNI.find(x=>x.codice_istat===cod); if(!c) return;
       document.getElementById("qvi-calc-comune").value=cod; calcola();
-      document.getElementById("qvi-dettaglio-body").innerHTML =
+
+      const detailHtml =
         `<h3 class="text-xl font-semibold text-slate-900">${c.comune} <span class="text-slate-500 text-base">(${c.sigla_provincia}, ${c.regione||""})</span></h3>` +
         `<div class="mt-4 grid md:grid-cols-2 gap-4">` +
         `<div><div class="text-xs uppercase text-slate-500 tracking-wide">Distribuzione redditi</div>` +
         `<div class="mt-1">P10: <b>${fmt(c.reddito_p10)}</b> &middot; Mediana: <b>${fmt(c.reddito_mediana)}</b> &middot; P90: <b>${fmt(c.reddito_p90)}</b></div>` +
         `<div class="mt-1 text-sm text-slate-600">Disuguaglianza P90/P10 = ${fmtN(c.ratio_p90_p10,2)} &middot; ` +
         `% sotto 15k: ${fmtN(c.pct_sotto_15k,1)}% &middot; % sopra 55k: ${fmtN(c.pct_sopra_55k,1)}%</div></div>` +
-        `<div><div class="text-xs uppercase text-slate-500 tracking-wide">OMI residenziale (${payload.meta.semestre_omi||"—"})</div>` +
-        `<div class="mt-1">Acquisto: <b>${fmt(c.prezzo_acq_eur_mq_med)}/mq</b></div>` +
-        `<div class="mt-1">Affitto: <b>${fmtN(c.affitto_eur_mq_mese_med,2)} €/mq mese</b></div></div>` +
+        omiBlockHtml(c) +
         `<div class="md:col-span-2"><div class="text-xs uppercase text-slate-500 tracking-wide">Reddito sostenibile (affitto)</div>` +
         `<div class="mt-1">Single: <b>${fmt(c.rs_single_affitto)}</b> &middot; Coppia 1 stip.: <b>${fmt(c.rs_coppia_affitto)}</b> &middot; Coppia +2 figli: <b>${fmt(c.rs_coppia_2f_affitto)}</b></div></div>` +
         `<div class="md:col-span-2"><div class="text-xs uppercase text-slate-500 tracking-wide">Indice qualità</div>` +
         `<div class="mt-1 text-2xl font-bold text-slate-900">${fmtN(c.indice_qualita,1)}/100</div></div>` +
         `</div>`;
+      document.getElementById("qvi-dettaglio-body").innerHTML = detailHtml;
       document.getElementById("qvi-dettaglio").scrollIntoView({behavior:"smooth", block:"nearest"});
+
+      // Lazy fetch OMI: solo se non disponibile nel payload
+      if (!c.omi_disponibile || c.prezzo_acq_eur_mq_med == null) {
+        fetchOmiAggregato(c).then(d => {
+          const el = document.getElementById("qvi-omi-live"); if (!el) return;
+          if (!d) { el.innerHTML = '<i class="text-rose-700">OMI non disponibile per questo comune.</i>'; return; }
+          // Aggiorna anche l'oggetto in memoria + ricalcolo calcolatore
+          c.prezzo_acq_eur_mq_med = d.prezzo_acq_eur_mq_med;
+          c.affitto_eur_mq_mese_med = d.affitto_eur_mq_mese_med;
+          c.omi_disponibile = !!(d.prezzo_acq_eur_mq_med || d.affitto_eur_mq_mese_med);
+          el.outerHTML = `<div class="mt-1">Acquisto: <b>${fmt(d.prezzo_acq_eur_mq_med)}/mq</b></div>` +
+            `<div class="mt-1">Affitto: <b>${fmtN(d.affitto_eur_mq_mese_med,2)} €/mq mese</b></div>` +
+            `<div class="mt-1 text-xs text-slate-500">Caricato live (${d.n_zone_con_dati||"?"}/${d.n_zone||"?"} zone)</div>`;
+          calcola(); simulaReddito();
+        });
+      }
     };
 
     // Init defaults
