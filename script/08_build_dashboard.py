@@ -694,7 +694,8 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
       <section class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
         <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('1. Mappa interattiva: dove si vive meglio'); ?></h2>
         <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
-          <p><?php lc_e('Ogni cerchio è un comune. Dimensione: numero di contribuenti. Colore: indicatore selezionato. Click su un punto per il dettaglio. Filtra regione e indicatore per riorientare la lettura.'); ?></p>
+          <p><?php lc_e('Ogni cerchio è un comune. Dimensione: numero di contribuenti. Colore: indicatore selezionato. Click su un punto per il dettaglio.'); ?></p>
+          <p class="text-sm rounded-xl bg-slate-50 border border-slate-200 p-3"><?php lc_e('La mappa carica di default i <strong>capoluoghi e città grandi</strong> (per leggerezza). Filtra una regione, oppure clicca <em>Mostra tutti i comuni</em> per il rendering completo (~7.900 punti).'); ?></p>
         </div>
         <div class="mt-6 flex flex-wrap gap-4 items-center">
           <label class="text-sm"><?php lc_e('Indicatore'); ?>
@@ -710,6 +711,12 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
           <label class="text-sm"><?php lc_e('Regione'); ?>
             <select id="qvi-regione" class="ml-2 rounded border border-slate-300 px-2 py-1 text-sm">
               <option value=""><?php lc_e('Tutte'); ?></option>
+            </select>
+          </label>
+          <label class="text-sm"><?php lc_e('Visualizza'); ?>
+            <select id="qvi-scope" class="ml-2 rounded border border-slate-300 px-2 py-1 text-sm">
+              <option value="big" selected>Capoluoghi e città grandi (≥40k contribuenti)</option>
+              <option value="all">Tutti i comuni</option>
             </select>
           </label>
         </div>
@@ -867,10 +874,10 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
 
     // KPI
     const kpiHtml = [
-      ['<?php lc_e("Comuni mappati"); ?>', COMUNI.length],
+      ['<?php lc_e("Comuni totali"); ?>', COMUNI.length.toLocaleString("it-IT")],
+      ['<?php lc_e("Comuni con OMI"); ?>', (payload.meta.n_comuni_con_omi||0).toLocaleString("it-IT")],
       ['<?php lc_e("Mediana naz. (€)"); ?>', fmt(payload.meta.mediana_naz || null)],
-      ['<?php lc_e("Anno redditi"); ?>', payload.meta.anno_redditi || '—'],
-      ['<?php lc_e("Semestre OMI"); ?>', payload.meta.semestre_omi || '—'],
+      ['<?php lc_e("Dati"); ?>', `MEF ${{payload.meta.anno_redditi||"—"}} · OMI ${{payload.meta.semestre_omi||"—"}}`],
     ].map(([k,v]) => `<div class="rounded-2xl bg-white/70 backdrop-blur border border-white/60 p-4 shadow-sm"><div class="text-xs uppercase tracking-wide text-slate-500">${{k}}</div><div class="mt-1 text-xl font-semibold text-slate-900">${{v}}</div></div>`).join("");
     document.getElementById("qvi-kpi").innerHTML = kpiHtml;
 
@@ -923,10 +930,20 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
     regCalc.addEventListener("change", () => {{ popolaProvince(); }});
     provCalc.addEventListener("change", () => {{ popolaComuni(); }});
 
+    const SOGLIA_BIG = 40000; // n_contribuenti per "città grande"
     function buildMap(filtro) {{
       const indic = document.getElementById("qvi-indicatore").value;
-      // Solo comuni con centroide + valore presente per l'indicatore selezionato
-      const subset = COMUNI.filter(c => CENTROIDI[c.codice_istat] && c[indic] != null && (!filtro || c.regione===filtro));
+      const scope = document.getElementById("qvi-scope").value;
+      // Filtri: centroide + valore presente + (regione opzionale) + (scope: big o all)
+      // Quando una regione e' selezionata, mostra TUTTI i comuni di quella regione
+      // (l'utente ha gia' ristretto). Altrimenti applica scope.
+      const subset = COMUNI.filter(c => {{
+        if (!CENTROIDI[c.codice_istat]) return false;
+        if (c[indic] == null) return false;
+        if (filtro) return c.regione === filtro;
+        if (scope === "big") return c.n_contribuenti >= SOGLIA_BIG;
+        return true;
+      }});
       const z = subset.map(c => c[indic]);
       const text = subset.map(c =>
         `<b>${{c.comune}}</b> (${{c.sigla_provincia}})<br>` +
@@ -952,6 +969,7 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
     buildMap("");
     document.getElementById("qvi-indicatore").addEventListener("change", () => buildMap(regSel.value));
     document.getElementById("qvi-regione").addEventListener("change", () => buildMap(regSel.value));
+    document.getElementById("qvi-scope").addEventListener("change", () => buildMap(regSel.value));
 
     // Tabelle
     const sortedDesc = [...COMUNI].filter(c=>c.indice_qualita!=null).sort((a,b)=>b.indice_qualita-a.indice_qualita);

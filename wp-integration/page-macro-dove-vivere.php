@@ -13,7 +13,7 @@ $site_name  = get_bloginfo('name');
 $page_title = lc__('Dove si vive bene in Italia: indice qualità della vita per comune');
 $full_title = $page_title . ' | ' . $site_name;
 
-$desc = lc__('Reddito mediano (MEF), prezzi case e affitti OMI, costo della vita stimato per 7896+ comuni italiani. Mappa interattiva, classifica top/bottom 30, calcolatore reddito sostenibile e simulatore IRPEF ordinario vs flat tax. Dati MEF 2024 + OMI semestre 20252.0.');
+$desc = lc__('Reddito mediano (MEF), prezzi case e affitti OMI, costo della vita stimato per 7896+ comuni italiani. Mappa interattiva, classifica top/bottom 30, calcolatore reddito sostenibile e simulatore IRPEF ordinario vs flat tax. Dati MEF 2024 + OMI semestre Sem. 2 2025.');
 
 $permalink = home_url('/macro/dove-vivere/');
 $canonical = $permalink;
@@ -107,7 +107,8 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
       <section class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
         <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('1. Mappa interattiva: dove si vive meglio'); ?></h2>
         <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
-          <p><?php lc_e('Ogni cerchio è un comune. Dimensione: numero di contribuenti. Colore: indicatore selezionato. Click su un punto per il dettaglio. Filtra regione e indicatore per riorientare la lettura.'); ?></p>
+          <p><?php lc_e('Ogni cerchio è un comune. Dimensione: numero di contribuenti. Colore: indicatore selezionato. Click su un punto per il dettaglio.'); ?></p>
+          <p class="text-sm rounded-xl bg-slate-50 border border-slate-200 p-3"><?php lc_e('La mappa carica di default i <strong>capoluoghi e città grandi</strong> (per leggerezza). Filtra una regione, oppure clicca <em>Mostra tutti i comuni</em> per il rendering completo (~7.900 punti).'); ?></p>
         </div>
         <div class="mt-6 flex flex-wrap gap-4 items-center">
           <label class="text-sm"><?php lc_e('Indicatore'); ?>
@@ -123,6 +124,12 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
           <label class="text-sm"><?php lc_e('Regione'); ?>
             <select id="qvi-regione" class="ml-2 rounded border border-slate-300 px-2 py-1 text-sm">
               <option value=""><?php lc_e('Tutte'); ?></option>
+            </select>
+          </label>
+          <label class="text-sm"><?php lc_e('Visualizza'); ?>
+            <select id="qvi-scope" class="ml-2 rounded border border-slate-300 px-2 py-1 text-sm">
+              <option value="big" selected>Capoluoghi e città grandi (≥40k contribuenti)</option>
+              <option value="all">Tutti i comuni</option>
             </select>
           </label>
         </div>
@@ -238,7 +245,7 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
         <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('Fonti e note metodologiche'); ?></h2>
         <ul class="mt-4 space-y-2 text-sm text-slate-700">
           <li><strong>MEF Dipartimento delle Finanze</strong>: dichiarazioni IRPEF su base comunale, anno 2024. P10/Q1/mediana/Q3/P90 stimati per interpolazione lineare nelle 8 fasce di reddito complessivo. La fascia >120k è aperta: P95/P99 non ricavabili senza assunzione esterna. Comuni con &lt;500 contribuenti: stime rumorose, segnalate.</li>
-          <li><strong>Agenzia delle Entrate OMI</strong>: quotazioni immobiliari semestre 20252.0. Mediana sui valori centrali min-max delle zone OMI di ciascun comune, tipologie "Abitazioni civili" + "Abitazioni di tipo economico", stato "Normale".</li>
+          <li><strong>Agenzia delle Entrate OMI</strong>: quotazioni immobiliari semestre Sem. 2 2025. Mediana sui valori centrali min-max delle zone OMI di ciascun comune, tipologie "Abitazioni civili" + "Abitazioni di tipo economico", stato "Normale".</li>
           <li><strong>Indice qualità</strong>: 60% residuo netto annuo (mediana netta &minus; spesa minima single in affitto) + 40% accessibilità casa (1 - prezzo acq normalizzato). Estendibile con criminalità e servizi BES (in attesa endpoint ISTAT).</li>
           <li><strong>IRPEF 2025</strong>: scaglioni 23% / 35% / 43%, detrazioni dipendente, addizionali regionale 1,73% e comunale 0,5% medie. Flat tax forfettario: imposta sostitutiva 15% (5% startup primi 5 anni), no addizionali, no detrazioni, soglia 85k.</li>
           <li><strong>Codice e dati</strong>: <a href="https://github.com/DrElegantia/qualita-vita-italia" target="_blank" rel="noopener">github.com/DrElegantia/qualita-vita-italia</a> (MIT). Pipeline auto-aggiornante mensile.</li>
@@ -280,10 +287,10 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
 
     // KPI
     const kpiHtml = [
-      ['<?php lc_e("Comuni mappati"); ?>', COMUNI.length],
+      ['<?php lc_e("Comuni totali"); ?>', COMUNI.length.toLocaleString("it-IT")],
+      ['<?php lc_e("Comuni con OMI"); ?>', (payload.meta.n_comuni_con_omi||0).toLocaleString("it-IT")],
       ['<?php lc_e("Mediana naz. (€)"); ?>', fmt(payload.meta.mediana_naz || null)],
-      ['<?php lc_e("Anno redditi"); ?>', payload.meta.anno_redditi || '—'],
-      ['<?php lc_e("Semestre OMI"); ?>', payload.meta.semestre_omi || '—'],
+      ['<?php lc_e("Dati"); ?>', `MEF ${payload.meta.anno_redditi||"—"} · OMI ${payload.meta.semestre_omi||"—"}`],
     ].map(([k,v]) => `<div class="rounded-2xl bg-white/70 backdrop-blur border border-white/60 p-4 shadow-sm"><div class="text-xs uppercase tracking-wide text-slate-500">${k}</div><div class="mt-1 text-xl font-semibold text-slate-900">${v}</div></div>`).join("");
     document.getElementById("qvi-kpi").innerHTML = kpiHtml;
 
@@ -336,10 +343,20 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
     regCalc.addEventListener("change", () => { popolaProvince(); });
     provCalc.addEventListener("change", () => { popolaComuni(); });
 
+    const SOGLIA_BIG = 40000; // n_contribuenti per "città grande"
     function buildMap(filtro) {
       const indic = document.getElementById("qvi-indicatore").value;
-      // Solo comuni con centroide + valore presente per l'indicatore selezionato
-      const subset = COMUNI.filter(c => CENTROIDI[c.codice_istat] && c[indic] != null && (!filtro || c.regione===filtro));
+      const scope = document.getElementById("qvi-scope").value;
+      // Filtri: centroide + valore presente + (regione opzionale) + (scope: big o all)
+      // Quando una regione e' selezionata, mostra TUTTI i comuni di quella regione
+      // (l'utente ha gia' ristretto). Altrimenti applica scope.
+      const subset = COMUNI.filter(c => {
+        if (!CENTROIDI[c.codice_istat]) return false;
+        if (c[indic] == null) return false;
+        if (filtro) return c.regione === filtro;
+        if (scope === "big") return c.n_contribuenti >= SOGLIA_BIG;
+        return true;
+      });
       const z = subset.map(c => c[indic]);
       const text = subset.map(c =>
         `<b>${c.comune}</b> (${c.sigla_provincia})<br>` +
@@ -365,6 +382,7 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
     buildMap("");
     document.getElementById("qvi-indicatore").addEventListener("change", () => buildMap(regSel.value));
     document.getElementById("qvi-regione").addEventListener("change", () => buildMap(regSel.value));
+    document.getElementById("qvi-scope").addEventListener("change", () => buildMap(regSel.value));
 
     // Tabelle
     const sortedDesc = [...COMUNI].filter(c=>c.indice_qualita!=null).sort((a,b)=>b.indice_qualita-a.indice_qualita);

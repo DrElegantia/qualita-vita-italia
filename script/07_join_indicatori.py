@@ -319,12 +319,35 @@ def main() -> int:
         "indice_qualita", "omi_disponibile",
     ]
     cols_present = [c for c in cols_essenziali if c in df_dash.columns]
+
+    # KPI mediana nazionale (pesata su contribuenti)
+    valid = df_dash.dropna(subset=["reddito_mediana", "n_contribuenti"])
+    mediana_naz = (int(round((valid["reddito_mediana"] * valid["n_contribuenti"]).sum()
+                              / valid["n_contribuenti"].sum()))
+                   if len(valid) else None)
+
+    # Semestre OMI: convert "20252" (int/str) → "Sem. 2 2025" leggibile
+    sem_raw = None
+    if "semestre" in df.columns and len(df):
+        sem_raw_val = df["semestre"].dropna().iloc[0] if df["semestre"].dropna().size else None
+        if sem_raw_val is not None:
+            try:
+                s = str(int(float(sem_raw_val)))  # 20252 normalized
+                if len(s) == 5:
+                    sem_raw = f"Sem. {s[4]} {s[:4]}"
+                else:
+                    sem_raw = s
+            except (ValueError, TypeError):
+                sem_raw = str(sem_raw_val)
+
     payload = {
         "meta": {
             "n_comuni": len(df_dash),
             "n_comuni_totali": len(df),
+            "n_comuni_con_omi": int(df_dash["omi_disponibile"].sum()),
             "anno_redditi": int(df["anno"].iloc[0]) if "anno" in df.columns else None,
-            "semestre_omi": str(df["semestre"].iloc[0]) if "semestre" in df.columns and len(df) else None,
+            "semestre_omi": sem_raw,
+            "mediana_naz": mediana_naz,
             "profili": {k: v for k, v in PROFILI.items()},
             "paniere_non_casa": PANIERE_NON_CASA,
         },
