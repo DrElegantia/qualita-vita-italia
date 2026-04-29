@@ -571,16 +571,92 @@ def build_dashboard():
     out_html.write_text(html, encoding="utf-8")
     log.info("scritto %s (%.1f KB)", out_html, out_html.stat().st_size / 1024)
 
-    # Payload separato per fetch async dal template WP (riduce LCP)
-    dash_payload = {
-        "meta": payload["meta"],
-        "comuni": payload["comuni"],
-        "centroidi": cent_subset,
+    # === PAYLOAD COMPATTO ===
+    # Altervista NON gzippa i .json: il payload va minificato strutturalmente.
+    # Schema colonnare + decimali tagliati + split in due file:
+    #   comuni-essential.json: meta + top 300 comuni per popolazione (~80 KB)
+    #     → caricato all'init, sufficiente per la prima vista
+    #   comuni-full.json: TUTTI i 7896 comuni (~700 KB compatto)
+    #     → fetch lazy quando l'utente seleziona regione/scope all/comune
+    #       fuori dai top 300
+
+    SOGLIA_ESSENTIAL = 300  # n comuni nel payload essential (per popolazione)
+
+    # Schema colonnare: cols header + rows array di valori
+    cols = [
+        "codice_istat", "comune", "sigla_provincia", "regione",
+        "n_contribuenti", "reddito_mediana", "reddito_p10", "reddito_p90",
+        "ratio_p90_p10", "pct_sotto_15k", "pct_sopra_55k",
+        "prezzo_acq_eur_mq_med", "affitto_eur_mq_mese_med",
+        "rs_single_affitto", "rs_coppia_affitto", "rs_coppia_2f_affitto",
+        "residuo_single_affitto", "residuo_coppia_2f_affitto",
+        "indice_qualita", "omi_disponibile", "lat", "lon",
+    ]
+
+    def round_val(v, dec=1):
+        if v is None or v == "":
+            return None
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, float):
+            return round(v, dec)
+        return v
+
+    def comune_to_row(c, lat_lon):
+        return [
+            c.get("codice_istat"),
+            c.get("comune"),
+            c.get("sigla_provincia"),
+            c.get("regione"),
+            int(c["n_contribuenti"]) if c.get("n_contribuenti") is not None else None,
+            round_val(c.get("reddito_mediana"), 0),
+            round_val(c.get("reddito_p10"), 0),
+            round_val(c.get("reddito_p90"), 0),
+            round_val(c.get("ratio_p90_p10"), 1),
+            round_val(c.get("pct_sotto_15k"), 1),
+            round_val(c.get("pct_sopra_55k"), 1),
+            round_val(c.get("prezzo_acq_eur_mq_med"), 0),
+            round_val(c.get("affitto_eur_mq_mese_med"), 1),
+            round_val(c.get("rs_single_affitto"), 0),
+            round_val(c.get("rs_coppia_affitto"), 0),
+            round_val(c.get("rs_coppia_2f_affitto"), 0),
+            round_val(c.get("residuo_single_affitto"), 0),
+            round_val(c.get("residuo_coppia_2f_affitto"), 0),
+            round_val(c.get("indice_qualita"), 1),
+            bool(c.get("omi_disponibile")),
+            lat_lon[0] if lat_lon else None,
+            lat_lon[1] if lat_lon else None,
+        ]
+
+    # Sort per popolazione decrescente per priorità essential
+    comuni_sorted = sorted(payload["comuni"],
+                           key=lambda c: c.get("n_contribuenti") or 0, reverse=True)
+
+    rows_full = [comune_to_row(c, cent_subset.get(c["codice_istat"])) for c in comuni_sorted]
+    rows_essential = rows_full[:SOGLIA_ESSENTIAL]
+
+    # Meta condivisa (no comuni, no centroidi inline → integrati in rows)
+    meta_compact = {**payload["meta"]}
+    # Lascia i bbox e regione_province (utili per cascata e zoom)
+
+    essential = {
+        "meta": meta_compact,
+        "cols": cols,
+        "rows": rows_essential,
+        "total": len(rows_full),
+        "essential_count": len(rows_essential),
     }
-    dash_json = OUT_DATA / "comuni-dashboard.json"
-    dash_json.write_text(json.dumps(dash_payload, ensure_ascii=False, separators=(",", ":")))
-    log.info("scritto %s (%.1f KB) per fetch async",
-             dash_json, dash_json.stat().st_size / 1024)
+    full = {"cols": cols, "rows": rows_full}
+
+    out_essential = OUT_DATA / "comuni-essential.json"
+    out_essential.write_text(json.dumps(essential, ensure_ascii=False, separators=(",", ":")))
+    log.info("scritto %s (%.1f KB, %d comuni)",
+             out_essential, out_essential.stat().st_size / 1024, len(rows_essential))
+
+    out_full = OUT_DATA / "comuni-full.json"
+    out_full.write_text(json.dumps(full, ensure_ascii=False, separators=(",", ":")))
+    log.info("scritto %s (%.1f KB, %d comuni)",
+             out_full, out_full.stat().st_size / 1024, len(rows_full))
 
     # Template WP "page-macro-dove-vivere.php" allineato al pattern UB:
     # body con classi Tailwind (bg-neutral-50, font-sans), container glass,
@@ -641,7 +717,8 @@ $pin = 'https://pinterest.com/pin/create/button/?url=' . rawurlencode($share_url
 if ($og_image) {{ $pin .= '&media=' . rawurlencode($og_image); }}
 
 // Path JSON dashboard caricato via FTP nel folder uploads
-$payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
+$payload_url = content_url('/uploads/qualita-vita/comuni-essential.json');
+$payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json');
 ?><!doctype html>
 <html lang="<?php echo $_lang; ?>">
 <head>
@@ -657,7 +734,7 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
     'slug'        => '{slug}',
   ]); ?>
   <link rel="preconnect" href="https://cdn.plot.ly" crossorigin>
-  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <link rel="preload" as="fetch" href="<?php echo esc_url($payload_url); ?>" crossorigin>
   <?php include __DIR__ . '/partials/mobile-dashboard-helpers.php'; ?>
 
   <?php wp_head(); ?>
@@ -916,7 +993,48 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
 <script>
 (function() {{
   const PAYLOAD_URL = <?php echo wp_json_encode($payload_url); ?>;
+  const PAYLOAD_FULL_URL = <?php echo wp_json_encode($payload_full_url); ?>;
+  const PLOTLY_URL = "https://cdn.plot.ly/plotly-2.27.0.min.js";
   const PALETTE = {{ orange: "#F17820", blue: "#00355F", green: "#1b7f3a", red: "#c0392b", neutral: "#475569" }};
+
+  // === Lazy loader Plotly ===
+  let _plotlyPromise = null;
+  function loadPlotly() {{
+    if (window.Plotly) return Promise.resolve(window.Plotly);
+    if (_plotlyPromise) return _plotlyPromise;
+    _plotlyPromise = new Promise((resolve, reject) => {{
+      const s = document.createElement("script");
+      s.src = PLOTLY_URL; s.async = true;
+      s.onload = () => resolve(window.Plotly);
+      s.onerror = reject;
+      document.head.appendChild(s);
+    }});
+    return _plotlyPromise;
+  }}
+
+  // === Schema colonnare → array of objects ===
+  function rowsToObjects(cols, rows) {{
+    return rows.map(r => {{
+      const o = {{}};
+      for (let i = 0; i < cols.length; i++) o[cols[i]] = r[i];
+      return o;
+    }});
+  }}
+
+  // === Lazy loader full payload ===
+  let _fullPromise = null;
+  function loadFull() {{
+    if (_fullPromise) return _fullPromise;
+    _fullPromise = fetch(PAYLOAD_FULL_URL).then(r => r.json()).then(j => {{
+      const objs = rowsToObjects(j.cols, j.rows);
+      const cent = {{}};
+      for (const c of objs) {{
+        if (c.lat != null && c.lon != null) cent[c.codice_istat] = [c.lat, c.lon];
+      }}
+      return {{ comuni: objs, centroidi: cent }};
+    }});
+    return _fullPromise;
+  }}
 
   // IRPEF 2025 + flat tax (clientside)
   const SCAGLIONI = [[28000, 0.23], [50000, 0.35], [Infinity, 0.43]];
@@ -938,13 +1056,32 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
   function fmtN(n,d=2) {{ if(n==null||isNaN(n))return "—"; return n.toFixed(d); }}
 
   let DATA = null;
+  let FULL_LOADED = false;
 
-  function init(payload) {{
-    DATA = payload;
-    const COMUNI = payload.comuni || [];
-    const CENTROIDI = payload.centroidi || {{}};
+  function init(payloadRaw) {{
+    DATA = payloadRaw;
+    let COMUNI = rowsToObjects(payloadRaw.cols, payloadRaw.rows);
+    let CENTROIDI = {{}};
+    for (const c of COMUNI) {{
+      if (c.lat != null && c.lon != null) CENTROIDI[c.codice_istat] = [c.lat, c.lon];
+    }}
+    const totalComuni = payloadRaw.total || COMUNI.length;
+    const payload = payloadRaw;
     const PROFILI = payload.meta.profili;
     const PANIERE = payload.meta.paniere_non_casa;
+
+    // Espansione lazy: scarica TUTTI i comuni e merge.
+    // Triggered da: scope=all, selezione regione, popolaProvince calcolatore.
+    function ensureFull() {{
+      if (FULL_LOADED) return Promise.resolve();
+      return loadFull().then(({{comuni, centroidi}}) => {{
+        COMUNI = comuni;
+        CENTROIDI = centroidi;
+        FULL_LOADED = true;
+        // Ripopola dropdown comune se gia inizializzato
+        if (typeof regCalc !== "undefined" && regCalc.value) popolaComuni();
+      }});
+    }}
     const IPC = payload.meta.ipc_regionale || {{}};
 
     // KPI
@@ -1028,7 +1165,7 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
       }});
       comCalc.disabled = false;
     }}
-    regCalc.addEventListener("change", () => {{ popolaProvince(); }});
+    regCalc.addEventListener("change", () => {{ ensureFull().then(popolaProvince); }});
     provCalc.addEventListener("change", () => {{ popolaComuni(); }});
 
     const SOGLIA_BIG = 40000; // n_contribuenti per "città grande"
@@ -1080,11 +1217,33 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
         gd.on("plotly_click", e => mostraDettaglio(e.points[0].customdata));
       }});
     }}
-    buildMap();
-    document.getElementById("qvi-indicatore").addEventListener("change", buildMap);
-    document.getElementById("qvi-regione").addEventListener("change", () => {{ popolaProvinceMappa(); buildMap(); }});
-    document.getElementById("qvi-provincia").addEventListener("change", buildMap);
-    document.getElementById("qvi-scope").addEventListener("change", buildMap);
+    // Render mappa solo dopo che Plotly e' caricato (lazy).
+    // Per l'init mostriamo placeholder leggero finche' l'utente non scrolla
+    // alla mappa. IntersectionObserver attiva il primo render.
+    function ensurePlotlyAndBuild() {{
+      const mapEl = document.getElementById("qvi-map");
+      mapEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#64748b">Caricamento mappa…</div>';
+      return loadPlotly().then(buildMap);
+    }}
+    let mapTriggered = false;
+    function triggerMap() {{ if (mapTriggered) return; mapTriggered = true; ensurePlotlyAndBuild(); }}
+    if ("IntersectionObserver" in window) {{
+      const io = new IntersectionObserver((entries) => {{
+        if (entries.some(e => e.isIntersecting)) {{ triggerMap(); io.disconnect(); }}
+      }}, {{rootMargin: "200px"}});
+      io.observe(document.getElementById("qvi-map"));
+    }} else {{
+      triggerMap();
+    }}
+    document.getElementById("qvi-indicatore").addEventListener("change", () => mapTriggered && buildMap());
+    document.getElementById("qvi-regione").addEventListener("change", () => {{
+      ensureFull().then(() => {{ popolaProvinceMappa(); if (mapTriggered) buildMap(); }});
+    }});
+    document.getElementById("qvi-provincia").addEventListener("change", () => mapTriggered && buildMap());
+    document.getElementById("qvi-scope").addEventListener("change", (e) => {{
+      if (e.target.value === "all") ensureFull().then(() => mapTriggered && buildMap());
+      else if (mapTriggered) buildMap();
+    }});
 
     // Tabelle
     const sortedDesc = [...COMUNI].filter(c=>c.indice_qualita!=null).sort((a,b)=>b.indice_qualita-a.indice_qualita);
