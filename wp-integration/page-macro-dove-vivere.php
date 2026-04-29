@@ -13,7 +13,7 @@ $site_name  = get_bloginfo('name');
 $page_title = lc__('Dove si vive bene in Italia: indice qualità della vita per comune');
 $full_title = $page_title . ' | ' . $site_name;
 
-$desc = lc__('Reddito mediano (MEF), prezzi case e affitti OMI, costo della vita stimato per 137+ comuni italiani. Mappa interattiva, classifica top/bottom 30, calcolatore reddito sostenibile e simulatore IRPEF ordinario vs flat tax. Dati MEF 2024 + OMI semestre nan.');
+$desc = lc__('Reddito mediano (MEF), prezzi case e affitti OMI, costo della vita stimato per 619+ comuni italiani. Mappa interattiva, classifica top/bottom 30, calcolatore reddito sostenibile e simulatore IRPEF ordinario vs flat tax. Dati MEF 2024 + OMI semestre 20252.0.');
 
 $permalink = home_url('/macro/dove-vivere/');
 $canonical = $permalink;
@@ -24,6 +24,14 @@ $og_image = function_exists('lc_og_image_url')
 
 $share_url   = $permalink;
 $share_title = $page_title;
+$fb  = 'https://www.facebook.com/sharer/sharer.php?u=' . rawurlencode($share_url);
+$x   = 'https://twitter.com/intent/tweet?url=' . rawurlencode($share_url) . '&text=' . rawurlencode($share_title);
+$ln  = 'https://www.linkedin.com/sharing/share-offsite/?url=' . rawurlencode($share_url);
+$pin = 'https://pinterest.com/pin/create/button/?url=' . rawurlencode($share_url) . '&description=' . rawurlencode($share_title);
+if ($og_image) { $pin .= '&media=' . rawurlencode($og_image); }
+
+// Path JSON dashboard caricato via FTP nel folder uploads
+$payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
 ?><!doctype html>
 <html lang="<?php echo $_lang; ?>">
 <head>
@@ -39,408 +47,399 @@ $share_title = $page_title;
     'slug'        => 'dove-vivere',
   ]); ?>
   <link rel="preconnect" href="https://cdn.plot.ly" crossorigin>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <?php include __DIR__ . '/partials/mobile-dashboard-helpers.php'; ?>
 
   <?php wp_head(); ?>
+
+  <?php echo lc_jsonld_breadcrumbs([
+    'Home'                          => home_url('/'),
+    lc__('Analisi macroeconomiche') => home_url('/macro/'),
+    $page_title                     => $permalink,
+  ]); ?>
 </head>
-<body <?php body_class('macro-page'); ?>>
-<style>
-  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 0;
-         background: #fafafa; color: #111; }
-  .container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
-  h1 { font-size: 1.6rem; margin-bottom: 0.3rem; }
-  h2 { font-size: 1.25rem; margin-top: 2rem; border-bottom: 1px solid #ddd; padding-bottom: 0.3rem; }
-  .meta { color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; }
-  .controls { background: #fff; padding: 0.8rem 1rem; border: 1px solid #e5e5e5; border-radius: 6px;
-              margin-bottom: 1rem; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; }
-  .controls label { font-size: 0.9rem; }
-  .controls select, .controls input[type=number] { padding: 0.3rem; font-size: 0.9rem; }
-  #map { width: 100%; height: 600px; background: #fff; border: 1px solid #e5e5e5; border-radius: 6px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
-  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
-  table { width: 100%; border-collapse: collapse; background: #fff; }
-  th, td { padding: 0.45rem 0.6rem; text-align: left; font-size: 0.85rem; border-bottom: 1px solid #eee; }
-  th { background: #f0f0f0; font-weight: 600; }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .calc { background: #fff; padding: 1rem; border: 1px solid #e5e5e5; border-radius: 6px; margin-top: 1rem; }
-  .calc-row { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1rem; align-items: center; margin-bottom: 0.5rem; }
-  .calc-out { background: #f7f7f0; padding: 1rem; border-radius: 6px; margin-top: 1rem; font-size: 0.95rem; }
-  .badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; font-weight: 600; }
-  .badge-good { background: #d8f3dc; color: #1b4332; }
-  .badge-bad { background: #ffd6d6; color: #6a0000; }
-  .badge-warn { background: #fff2cc; color: #6a5a00; }
-  .footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ddd; color: #666; font-size: 0.8rem; }
-  a { color: #0066cc; }
-</style>
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 
-<div class="container">
-<h1>Dove si vive bene in Italia</h1>
-<p class="meta">
-  Indice qualità della vita per comune. Combina reddito mediano (MEF dichiarazioni IRPEF 2024),
-  prezzi di acquisto e affitti OMI (Agenzia Entrate, semestre nan), reddito sostenibile per
-  diversi profili familiari. Dashboard preliminare con 137 comuni: include capoluoghi e
-  città grandi. Bulk completo in elaborazione.
-</p>
+<body <?php body_class('bg-neutral-50 text-neutral-900 font-sans'); ?>>
+<?php wp_body_open(); ?>
 
-<div class="controls">
-  <label>Indicatore mappa:
-    <select id="indicatore">
-      <option value="indice_qualita" selected>Indice qualità (composito)</option>
-      <option value="reddito_mediana">Reddito mediano</option>
-      <option value="affitto_eur_mq_mese_med">Affitto € /mq mese</option>
-      <option value="prezzo_acq_eur_mq_med">Prezzo acquisto € /mq</option>
-      <option value="ratio_p90_p10">Disuguaglianza P90/P10</option>
-      <option value="residuo_single_affitto">Residuo netto annuo (single)</option>
-    </select>
-  </label>
-  <label>Filtra regione:
-    <select id="regione">
-      <option value="">Tutte</option>
-    </select>
-  </label>
-</div>
-
-<div id="map"></div>
-
-<h2>Classifica</h2>
-<div class="grid">
-  <div>
-    <h3 style="margin-top: 0">Top 30 — vivibilità</h3>
-    <table id="top-tab">
-      <thead><tr><th>#</th><th>Comune</th><th>Pr</th><th class="num">Indice</th><th class="num">Mediana €</th><th class="num">Affitto €/mq</th></tr></thead>
-      <tbody></tbody>
-    </table>
+<div class="min-h-screen bg-grid">
+  <div class="pointer-events-none fixed inset-0">
+    <div class="absolute -top-24 -left-24 h-96 w-96 rounded-full blur-3xl opacity-40" style="background:#F17820;"></div>
+    <div class="absolute top-24 -right-24 h-[28rem] w-[28rem] rounded-full blur-3xl opacity-30" style="background:#00355F;"></div>
+    <div class="absolute bottom-[-140px] left-1/2 -translate-x-1/2 h-[34rem] w-[34rem] rounded-full blur-3xl opacity-20" style="background:#1b7f3a;"></div>
   </div>
-  <div>
-    <h3 style="margin-top: 0">Bottom 30 — vivibilità</h3>
-    <table id="bot-tab">
-      <thead><tr><th>#</th><th>Comune</th><th>Pr</th><th class="num">Indice</th><th class="num">Mediana €</th><th class="num">Affitto €/mq</th></tr></thead>
-      <tbody></tbody>
-    </table>
+
+  <div class="relative">
+    <main class="mx-auto max-w-6xl px-6 pt-12 pb-32">
+
+      <!-- HERO -->
+      <div class="glass shadow-float rounded-3xl p-8 md:p-10">
+        <?php if (function_exists('lc_render_nav_bar')) lc_render_nav_bar(); ?>
+
+        <div class="mt-6 text-xs text-slate-600 flex items-center gap-2">
+          <time datetime="2026-04-29"><?php lc_e('29 Aprile 2026'); ?></time>
+          <span class="opacity-40">&bull;</span>
+          <span>Umberto Bertonelli</span>
+        </div>
+
+        <h1 class="mt-3 text-3xl md:text-5xl font-semibold tracking-tight text-slate-950"><?php echo esc_html($page_title); ?></h1>
+
+        <p class="mt-4 text-lg text-slate-700 max-w-3xl">
+          <?php lc_e('Reddito mediano dichiarato (MEF), affitti e prezzi al mq (Agenzia Entrate OMI), reddito sostenibile per famiglia tipo, simulatore IRPEF vs flat tax. Indice qualità della vita per ogni comune con dati disponibili.'); ?>
+        </p>
+
+        <div class="sharebar mt-4">
+          <div class="sharebar-left"><?php lc_e('Condividi'); ?></div>
+          <div class="sharebar-right">
+            <a class="share-btn" href="<?php echo esc_url($fb); ?>" target="_blank" rel="noopener" aria-label="Facebook"><i class="fa-brands fa-facebook-f" aria-hidden="true"></i></a>
+            <a class="share-btn" href="<?php echo esc_url($x); ?>" target="_blank" rel="noopener" aria-label="X"><i class="fa-brands fa-x-twitter" aria-hidden="true"></i></a>
+            <a class="share-btn" href="<?php echo esc_url($ln); ?>" target="_blank" rel="noopener" aria-label="LinkedIn"><i class="fa-brands fa-linkedin-in" aria-hidden="true"></i></a>
+            <a class="share-btn" href="<?php echo esc_url($pin); ?>" target="_blank" rel="noopener" aria-label="Pinterest"><i class="fa-brands fa-pinterest-p" aria-hidden="true"></i></a>
+          </div>
+        </div>
+
+        <div id="qvi-kpi" class="mt-8 grid sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+      </div>
+
+      <?php if (file_exists(__DIR__ . '/partials/newsletter-substack.php')) include __DIR__ . '/partials/newsletter-substack.php'; ?>
+
+      <!-- 1. MAPPA -->
+      <section class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
+        <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('1. Mappa interattiva: dove si vive meglio'); ?></h2>
+        <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
+          <p><?php lc_e('Ogni cerchio è un comune. Dimensione: numero di contribuenti. Colore: indicatore selezionato. Click su un punto per il dettaglio. Filtra regione e indicatore per riorientare la lettura.'); ?></p>
+        </div>
+        <div class="mt-6 flex flex-wrap gap-4 items-center">
+          <label class="text-sm"><?php lc_e('Indicatore'); ?>
+            <select id="qvi-indicatore" class="ml-2 rounded border border-slate-300 px-2 py-1 text-sm">
+              <option value="indice_qualita" selected>Indice qualità (composito)</option>
+              <option value="reddito_mediana">Reddito mediano</option>
+              <option value="affitto_eur_mq_mese_med">Affitto € /mq mese</option>
+              <option value="prezzo_acq_eur_mq_med">Prezzo acquisto € /mq</option>
+              <option value="ratio_p90_p10">Disuguaglianza P90/P10</option>
+              <option value="residuo_single_affitto">Residuo netto annuo (single)</option>
+            </select>
+          </label>
+          <label class="text-sm"><?php lc_e('Regione'); ?>
+            <select id="qvi-regione" class="ml-2 rounded border border-slate-300 px-2 py-1 text-sm">
+              <option value=""><?php lc_e('Tutte'); ?></option>
+            </select>
+          </label>
+        </div>
+        <div id="qvi-map" class="mt-6 rounded-2xl overflow-hidden" style="min-height:560px;"></div>
+        <p class="mt-4 text-sm text-slate-500"><?php lc_e('Dati: MEF dichiarazioni IRPEF + Agenzia Entrate OMI. Indice qualità: 60% residuo netto annuo + 40% accessibilità casa. Estendibile con criminalità e servizi BES quando i dati ISTAT torneranno raggiungibili.'); ?></p>
+      </section>
+
+      <!-- 2. CLASSIFICA -->
+      <section class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
+        <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('2. Classifica: top e bottom 30 per indice qualità'); ?></h2>
+        <div class="mt-6 grid md:grid-cols-2 gap-6">
+          <div>
+            <h3 class="text-lg font-semibold text-slate-900 mb-2"><?php lc_e('Top 30: vivibilità più alta'); ?></h3>
+            <div class="overflow-x-auto"><table id="qvi-top" class="w-full text-sm">
+              <thead class="bg-slate-100 text-slate-700"><tr>
+                <th class="text-left px-2 py-1">#</th><th class="text-left px-2 py-1"><?php lc_e('Comune'); ?></th>
+                <th class="text-left px-2 py-1">Pr</th><th class="text-right px-2 py-1"><?php lc_e('Indice'); ?></th>
+                <th class="text-right px-2 py-1"><?php lc_e('Mediana €'); ?></th>
+                <th class="text-right px-2 py-1"><?php lc_e('Affitto €/mq'); ?></th>
+              </tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </div>
+          <div>
+            <h3 class="text-lg font-semibold text-slate-900 mb-2"><?php lc_e('Bottom 30: vivibilità più bassa'); ?></h3>
+            <div class="overflow-x-auto"><table id="qvi-bot" class="w-full text-sm">
+              <thead class="bg-slate-100 text-slate-700"><tr>
+                <th class="text-left px-2 py-1">#</th><th class="text-left px-2 py-1"><?php lc_e('Comune'); ?></th>
+                <th class="text-left px-2 py-1">Pr</th><th class="text-right px-2 py-1"><?php lc_e('Indice'); ?></th>
+                <th class="text-right px-2 py-1"><?php lc_e('Mediana €'); ?></th>
+                <th class="text-right px-2 py-1"><?php lc_e('Affitto €/mq'); ?></th>
+              </tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. CALCOLATORE -->
+      <section class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
+        <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('3. Calcolatore reddito sostenibile'); ?></h2>
+        <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
+          <p><?php lc_e('Quanto reddito lordo familiare serve per coprire le spese in un comune scelto? Combina paniere ISTAT non-casa stimato per profilo + costo casa OMI + IRPEF/addizionali stimati.'); ?></p>
+        </div>
+        <div class="mt-6 grid md:grid-cols-3 gap-4">
+          <label class="text-sm"><?php lc_e('Comune'); ?>
+            <select id="qvi-calc-comune" class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"></select>
+          </label>
+          <label class="text-sm"><?php lc_e('Profilo'); ?>
+            <select id="qvi-calc-profilo" class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
+              <option value="single">1 adulto</option>
+              <option value="coppia" selected>Coppia, 1 stipendio</option>
+              <option value="coppia2">Coppia, 2 stipendi</option>
+              <option value="coppia_1f">Coppia + 1 figlio, 1 stip.</option>
+              <option value="coppia_2f">Coppia + 2 figli, 2 stip.</option>
+            </select>
+          </label>
+          <label class="text-sm"><?php lc_e('Casa'); ?>
+            <select id="qvi-calc-modalita" class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
+              <option value="affitto" selected>Affitto</option>
+              <option value="proprieta">Già proprietario</option>
+            </select>
+          </label>
+        </div>
+        <div id="qvi-calc-out" class="mt-4 rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-700"><?php lc_e('Seleziona un comune per vedere il calcolo.'); ?></div>
+      </section>
+
+      <!-- 4. SIMULATORE IRPEF VS FLAT TAX -->
+      <section class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
+        <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('4. Simula il tuo reddito: IRPEF ordinario vs flat tax'); ?></h2>
+        <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
+          <p><?php lc_e('Inserisci un reddito imponibile (lordo, già al netto dei contributi previdenziali). Confronta il netto effettivo nei tre regimi e quanto residua dalla spesa totale annua per il comune scelto sopra.'); ?></p>
+          <p class="text-sm rounded-xl bg-slate-50 border border-slate-200 p-3"><?php lc_e('Il regime forfettario richiede ricavi entro <strong>85.000 €/anno</strong>: oltre questa soglia non è applicabile (resta solo IRPEF ordinario).'); ?></p>
+        </div>
+        <div class="mt-6 grid md:grid-cols-2 gap-4">
+          <label class="text-sm"><?php lc_e('Reddito imponibile annuo (€)'); ?>
+            <input type="number" id="qvi-sim-reddito" min="0" max="500000" step="1000" value="30000"
+                   class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
+          </label>
+          <label class="text-sm"><?php lc_e('Regime'); ?>
+            <select id="qvi-sim-regime" class="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm">
+              <option value="ordinario" selected>IRPEF ordinario (dipendente)</option>
+              <option value="flat15">Flat tax 15% (forfettario)</option>
+              <option value="flat5">Flat tax 5% (forfettario startup)</option>
+            </select>
+          </label>
+        </div>
+        <div id="qvi-sim-out" class="mt-4 rounded-xl bg-blue-50 border border-blue-200 p-4 text-sm text-slate-800"><?php lc_e('Inserisci un reddito per simulare.'); ?></div>
+      </section>
+
+      <!-- 5. DETTAGLIO COMUNE -->
+      <section id="qvi-dettaglio" class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
+        <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('5. Dettaglio comune'); ?></h2>
+        <div id="qvi-dettaglio-body" class="mt-6 text-sm text-slate-700"><?php lc_e('Clicca un punto sulla mappa o un comune in classifica per vedere i dettagli.'); ?></div>
+      </section>
+
+      <!-- FONTI -->
+      <section class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
+        <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('Fonti e note metodologiche'); ?></h2>
+        <ul class="mt-4 space-y-2 text-sm text-slate-700">
+          <li><strong>MEF Dipartimento delle Finanze</strong>: dichiarazioni IRPEF su base comunale, anno 2024. P10/Q1/mediana/Q3/P90 stimati per interpolazione lineare nelle 8 fasce di reddito complessivo. La fascia >120k è aperta: P95/P99 non ricavabili senza assunzione esterna. Comuni con &lt;500 contribuenti: stime rumorose, segnalate.</li>
+          <li><strong>Agenzia delle Entrate OMI</strong>: quotazioni immobiliari semestre 20252.0. Mediana sui valori centrali min-max delle zone OMI di ciascun comune, tipologie "Abitazioni civili" + "Abitazioni di tipo economico", stato "Normale".</li>
+          <li><strong>Indice qualità</strong>: 60% residuo netto annuo (mediana netta &minus; spesa minima single in affitto) + 40% accessibilità casa (1 - prezzo acq normalizzato). Estendibile con criminalità e servizi BES (in attesa endpoint ISTAT).</li>
+          <li><strong>IRPEF 2025</strong>: scaglioni 23% / 35% / 43%, detrazioni dipendente, addizionali regionale 1,73% e comunale 0,5% medie. Flat tax forfettario: imposta sostitutiva 15% (5% startup primi 5 anni), no addizionali, no detrazioni, soglia 85k.</li>
+          <li><strong>Codice e dati</strong>: <a href="https://github.com/DrElegantia/qualita-vita-italia" target="_blank" rel="noopener">github.com/DrElegantia/qualita-vita-italia</a> (MIT). Pipeline auto-aggiornante mensile.</li>
+        </ul>
+      </section>
+
+      <?php if (file_exists(__DIR__ . '/partials/footer-condividi.php')) include __DIR__ . '/partials/footer-condividi.php'; ?>
+
+    </main>
   </div>
-</div>
-
-<h2>Calcolatore reddito sostenibile</h2>
-<p>Quanto reddito lordo familiare serve per coprire le spese in un comune scelto, dato un profilo familiare?
-Sotto il calcolo "quanto serve" puoi anche <b>simulare un tuo reddito</b> e vedere quanto resta in regime IRPEF ordinario o flat tax 15% (forfettario).</p>
-<div class="calc">
-  <div class="calc-row">
-    <label for="calc-comune">Comune:</label>
-    <select id="calc-comune"></select>
-    <label for="calc-profilo">Profilo:</label>
-    <select id="calc-profilo">
-      <option value="single">1 adulto</option>
-      <option value="coppia" selected>Coppia, 1 stipendio</option>
-      <option value="coppia2">Coppia, 2 stipendi</option>
-      <option value="coppia_1f">Coppia + 1 figlio, 1 stip.</option>
-      <option value="coppia_2f">Coppia + 2 figli, 2 stip.</option>
-    </select>
-    <label for="calc-modalita">Casa:</label>
-    <select id="calc-modalita">
-      <option value="affitto" selected>Affitto</option>
-      <option value="proprieta">Già proprietario</option>
-    </select>
-  </div>
-  <div id="calc-out" class="calc-out">Seleziona un comune per vedere il calcolo.</div>
-
-  <div style="border-top: 1px solid #e5e5e5; margin-top: 1rem; padding-top: 0.8rem;">
-    <div class="calc-row">
-      <label for="sim-reddito">Simula il tuo reddito imponibile lordo (€/anno):</label>
-      <input type="number" id="sim-reddito" min="0" max="500000" step="1000" value="30000" style="width: 140px; padding: 0.3rem;">
-      <label for="sim-regime">Regime:</label>
-      <select id="sim-regime">
-        <option value="ordinario" selected>IRPEF ordinario (dipendente)</option>
-        <option value="flat15">Flat tax 15% (forfettario)</option>
-        <option value="flat5">Flat tax 5% (forfettario startup, primi 5 anni)</option>
-      </select>
-    </div>
-    <div id="sim-out" class="calc-out" style="background: #eef2f7;">Inserisci un reddito per simulare.</div>
-    <p style="font-size: 0.78rem; color: #666; margin-top: 0.5rem;">
-      Note: l'imponibile IRPEF è già al netto dei contributi previdenziali. Per il regime ordinario applichiamo
-      IRPEF a scaglioni 23/35/43% + detrazioni dipendente + addizionali regionale e comunale medie. Per il
-      forfettario applichiamo l'imposta sostitutiva sull'imponibile (no addizionali, no detrazioni).
-      Il regime forfettario richiede ricavi entro <b>85.000 €/anno</b>: oltre questa soglia non è applicabile.
-    </p>
-  </div>
-</div>
-
-<h2>Dettaglio comune</h2>
-<div id="dettaglio" class="calc">Clicca un punto sulla mappa o un comune in classifica per vedere il dettaglio.</div>
-
-<div class="footer">
-  Fonti: <a href="https://www1.finanze.gov.it/finanze/analisi_stat/public/v_4_0_0/contenuti/" target="_blank">MEF Dipartimento delle Finanze</a> (dichiarazioni IRPEF su base comunale, anno 2024);
-  <a href="https://wwwt.agenziaentrate.gov.it/geopoi_omi/index.htm" target="_blank">Agenzia delle Entrate OMI</a>
-  (Quotazioni Immobiliari, semestre nan).
-  Codice e dati: <a href="https://github.com/" target="_blank">github.com/qualita-vita-italia</a>.
-  Indice qualità: 60% residuo netto annuo + 40% accessibilità casa (versione preliminare; verranno
-  aggiunti criminalità e servizi BES quando disponibili). Dati per 137 comuni; copertura
-  bulk completa in elaborazione.
-</div>
 </div>
 
 <script>
-const PAYLOAD = {"meta": {"n_comuni": 137, "n_comuni_totali": 7896, "anno_redditi": 2024, "semestre_omi": "nan", "profili": {"single": {"adulti": 1, "figli": 0, "percettori": 1, "mq": 50, "label": "1 adulto"}, "coppia": {"adulti": 2, "figli": 0, "percettori": 1, "mq": 65, "label": "Coppia, 1 stipendio"}, "coppia2": {"adulti": 2, "figli": 0, "percettori": 2, "mq": 65, "label": "Coppia, 2 stipendi"}, "coppia_1f": {"adulti": 2, "figli": 1, "percettori": 1, "mq": 75, "label": "Coppia + 1 figlio, 1 stip."}, "coppia_2f": {"adulti": 2, "figli": 2, "percettori": 2, "mq": 90, "label": "Coppia + 2 figli, 2 stip."}}, "paniere_non_casa": {"single": 8400, "coppia": 14500, "coppia2": 14500, "coppia_1f": 17400, "coppia_2f": 21000}}, "comuni": [{"codice_istat": "084001", "comune": "AGRIGENTO", "sigla_provincia": "AG", "regione": "Sicilia", "n_contribuenti": 35885, "reddito_mediana": 20005.0, "reddito_p10": 3592.0, "reddito_p90": 51044.0, "ratio_p90_p10": 14.21, "pct_sotto_15k": 38.89, "pct_sopra_55k": 5.78, "prezzo_acq_eur_mq_med": 725.0, "affitto_eur_mq_mese_med": 3.0, "rs_single_affitto": 11027.0, "rs_coppia_affitto": 18847.0, "rs_coppia_2f_affitto": 24793.0, "residuo_single_affitto": 7400.0, "residuo_coppia_2f_affitto": -3142.0, "indice_qualita": 78.2}, {"codice_istat": "006003", "comune": "ALESSANDRIA", "sigla_provincia": "AL", "regione": "Piemonte", "n_contribuenti": 68460, "reddito_mediana": 23049.0, "reddito_p10": 5156.0, "reddito_p90": 51226.0, "ratio_p90_p10": 9.94, "pct_sotto_15k": 29.09, "pct_sopra_55k": 5.16, "prezzo_acq_eur_mq_med": 655.0, "affitto_eur_mq_mese_med": 3.8, "rs_single_affitto": 11669.0, "rs_coppia_affitto": 19798.0, "rs_coppia_2f_affitto": 25677.0, "residuo_single_affitto": 8917.0, "residuo_coppia_2f_affitto": -1724.0, "indice_qualita": 95.8}, {"codice_istat": "072004", "comune": "ALTAMURA", "sigla_provincia": "BA", "regione": "Puglia", "n_contribuenti": 46159, "reddito_mediana": 17917.0, "reddito_p10": 3351.0, "reddito_p90": 46858.0, "ratio_p90_p10": 13.98, "pct_sotto_15k": 42.07, "pct_sopra_55k": 2.97, "prezzo_acq_eur_mq_med": 947.5, "affitto_eur_mq_mese_med": 3.15, "rs_single_affitto": 11148.0, "rs_coppia_affitto": 19026.0, "rs_coppia_2f_affitto": 24959.0, "residuo_single_affitto": 5939.0, "residuo_coppia_2f_affitto": -5233.0, "indice_qualita": 55.7}, {"codice_istat": "042002", "comune": "ANCONA", "sigla_provincia": "AN", "regione": "Marche", "n_contribuenti": 77569, "reddito_mediana": 22564.0, "reddito_p10": 4854.0, "reddito_p90": 52171.0, "ratio_p90_p10": 10.75, "pct_sotto_15k": 30.58, "pct_sopra_55k": 6.63, "prezzo_acq_eur_mq_med": 1112.5, "affitto_eur_mq_mese_med": 5.8, "rs_single_affitto": 13274.0, "rs_coppia_affitto": 22176.0, "rs_coppia_2f_affitto": 27886.0, "residuo_single_affitto": 7399.0, "residuo_coppia_2f_affitto": -3492.0, "indice_qualita": 67.4}, {"codice_istat": "110001", "comune": "ANDRIA", "sigla_provincia": "BT", "regione": "Puglia", "n_contribuenti": 61865, "reddito_mediana": 15275.0, "reddito_p10": 2852.0, "reddito_p90": 42986.0, "ratio_p90_p10": 15.07, "pct_sotto_15k": 49.25, "pct_sopra_55k": 2.28, "prezzo_acq_eur_mq_med": 1100.0, "affitto_eur_mq_mese_med": 3.57, "rs_single_affitto": 11485.0, "rs_coppia_affitto": 19525.0, "rs_coppia_2f_affitto": 25423.0, "residuo_single_affitto": 3954.0, "residuo_coppia_2f_affitto": -8120.0, "indice_qualita": 29.1}, {"codice_istat": "058007", "comune": "ANZIO", "sigla_provincia": "RM", "regione": "Lazio", "n_contribuenti": 40133, "reddito_mediana": 20087.0, "reddito_p10": 3671.0, "reddito_p90": 50683.0, "ratio_p90_p10": 13.81, "pct_sotto_15k": 38.66, "pct_sopra_55k": 5.31, "prezzo_acq_eur_mq_med": 1375.0, "affitto_eur_mq_mese_med": 6.75, "rs_single_affitto": 14036.0, "rs_coppia_affitto": 23305.0, "rs_coppia_2f_affitto": 28935.0, "residuo_single_affitto": 5204.0, "residuo_coppia_2f_affitto": -5698.0, "indice_qualita": 35.4}, {"codice_istat": "059001", "comune": "APRILIA", "sigla_provincia": "LT", "regione": "Lazio", "n_contribuenti": 50748, "reddito_mediana": 19679.0, "reddito_p10": 3980.0, "reddito_p90": 48262.0, "ratio_p90_p10": 12.13, "pct_sotto_15k": 37.58, "pct_sopra_55k": 2.97, "prezzo_acq_eur_mq_med": 1037.5, "affitto_eur_mq_mese_med": 5.75, "rs_single_affitto": 13234.0, "rs_coppia_affitto": 22116.0, "rs_coppia_2f_affitto": 27831.0, "residuo_single_affitto": 5536.0, "residuo_coppia_2f_affitto": -5395.0, "indice_qualita": 48.6}, {"codice_istat": "066049", "comune": "L'AQUILA", "sigla_provincia": "AQ", "regione": "Abruzzo", "n_contribuenti": 53474, "reddito_mediana": 23915.0, "reddito_p10": 4903.0, "reddito_p90": 52788.0, "ratio_p90_p10": 10.77, "pct_sotto_15k": 29.68, "pct_sopra_55k": 7.09, "prezzo_acq_eur_mq_med": 672.5, "affitto_eur_mq_mese_med": 2.25, "rs_single_affitto": 10425.0, "rs_coppia_affitto": 17956.0, "rs_coppia_2f_affitto": 23964.0, "residuo_single_affitto": 10415.0, "residuo_coppia_2f_affitto": -32.0, "indice_qualita": 100.0}, {"codice_istat": "051002", "comune": "AREZZO", "sigla_provincia": "AR", "regione": "Toscana", "n_contribuenti": 74966, "reddito_mediana": 22227.0, "reddito_p10": 5204.0, "reddito_p90": 51199.0, "ratio_p90_p10": 9.84, "pct_sotto_15k": 28.98, "pct_sopra_55k": 5.62, "prezzo_acq_eur_mq_med": 1125.0, "affitto_eur_mq_mese_med": 4.02, "rs_single_affitto": 11846.0, "rs_coppia_affitto": 20060.0, "rs_coppia_2f_affitto": 25920.0, "residuo_single_affitto": 8245.0, "residuo_coppia_2f_affitto": -2423.0, "indice_qualita": 76.5}, {"codice_istat": "044007", "comune": "ASCOLI PICENO", "sigla_provincia": "AP", "regione": "Marche", "n_contribuenti": 35610, "reddito_mediana": 22275.0, "reddito_p10": 4669.0, "reddito_p90": 51500.0, "ratio_p90_p10": 11.03, "pct_sotto_15k": 31.56, "pct_sopra_55k": 5.81, "prezzo_acq_eur_mq_med": 1085.0, "affitto_eur_mq_mese_med": 4.55, "rs_single_affitto": 12271.0, "rs_coppia_affitto": 20690.0, "rs_coppia_2f_affitto": 26505.0, "residuo_single_affitto": 7959.0, "residuo_coppia_2f_affitto": -2776.0, "indice_qualita": 74.4}, {"codice_istat": "005005", "comune": "ASTI", "sigla_provincia": "AT", "regione": "Piemonte", "n_contribuenti": 54547, "reddito_mediana": 22700.0, "reddito_p10": 5168.0, "reddito_p90": 51266.0, "ratio_p90_p10": 9.92, "pct_sotto_15k": 28.95, "pct_sopra_55k": 5.42, "prezzo_acq_eur_mq_med": 702.5, "affitto_eur_mq_mese_med": 3.65, "rs_single_affitto": 11549.0, "rs_coppia_affitto": 19620.0, "rs_coppia_2f_affitto": 25511.0, "residuo_single_affitto": 8778.0, "residuo_coppia_2f_affitto": -1844.0, "indice_qualita": 94.3}, {"codice_istat": "064008", "comune": "AVELLINO", "sigla_provincia": "AV", "regione": "Campania", "n_contribuenti": 36096, "reddito_mediana": 22455.0, "reddito_p10": 4029.0, "reddito_p90": 52315.0, "ratio_p90_p10": 12.98, "pct_sotto_15k": 35.15, "pct_sopra_55k": 6.64, "prezzo_acq_eur_mq_med": 945.0, "affitto_eur_mq_mese_med": 3.43, "rs_single_affitto": 11372.0, "rs_coppia_affitto": 19359.0, "rs_coppia_2f_affitto": 25268.0, "residuo_single_affitto": 8749.0, "residuo_coppia_2f_affitto": -1846.0, "indice_qualita": 87.2}, {"codice_istat": "072006", "comune": "BARI", "sigla_provincia": "BA", "regione": "Puglia", "n_contribuenti": 220041, "reddito_mediana": 21258.0, "reddito_p10": 3957.0, "reddito_p90": 53519.0, "ratio_p90_p10": 13.53, "pct_sotto_15k": 36.13, "pct_sopra_55k": 8.41, "prezzo_acq_eur_mq_med": 1575.0, "affitto_eur_mq_mese_med": 5.7, "rs_single_affitto": 13194.0, "rs_coppia_affitto": 22057.0, "rs_coppia_2f_affitto": 27775.0, "residuo_single_affitto": 6602.0, "residuo_coppia_2f_affitto": -4276.0, "indice_qualita": 45.5}, {"codice_istat": "110002", "comune": "BARLETTA", "sigla_provincia": "BT", "regione": "Puglia", "n_contribuenti": 60133, "reddito_mediana": 15529.0, "reddito_p10": 2783.0, "reddito_p90": 46476.0, "ratio_p90_p10": 16.7, "pct_sotto_15k": 48.77, "pct_sopra_55k": 3.49, "prezzo_acq_eur_mq_med": 1275.0, "affitto_eur_mq_mese_med": 4.4, "rs_single_affitto": 12151.0, "rs_coppia_affitto": 20512.0, "rs_coppia_2f_affitto": 26339.0, "residuo_single_affitto": 3622.0, "residuo_coppia_2f_affitto": -8473.0, "indice_qualita": 24.0}, {"codice_istat": "016024", "comune": "BERGAMO", "sigla_provincia": "BG", "regione": "Lombardia", "n_contribuenti": 93131, "reddito_mediana": 24898.0, "reddito_p10": 5091.0, "reddito_p90": 67695.0, "ratio_p90_p10": 13.3, "pct_sotto_15k": 28.36, "pct_sopra_55k": 13.36, "prezzo_acq_eur_mq_med": 1675.0, "affitto_eur_mq_mese_med": 6.72, "rs_single_affitto": 14012.0, "rs_coppia_affitto": 23269.0, "rs_coppia_2f_affitto": 28902.0, "residuo_single_affitto": 8378.0, "residuo_coppia_2f_affitto": -2523.0, "indice_qualita": 62.6}, {"codice_istat": "110003", "comune": "BISCEGLIE", "sigla_provincia": "BT", "regione": "Puglia", "n_contribuenti": 36213, "reddito_mediana": 15885.0, "reddito_p10": 2960.0, "reddito_p90": 45655.0, "ratio_p90_p10": 15.42, "pct_sotto_15k": 47.83, "pct_sopra_55k": 2.79, "prezzo_acq_eur_mq_med": 1150.0, "affitto_eur_mq_mese_med": 4.38, "rs_single_affitto": 12135.0, "rs_coppia_affitto": 20488.0, "rs_coppia_2f_affitto": 26317.0, "residuo_single_affitto": 3868.0, "residuo_coppia_2f_affitto": -8111.0, "indice_qualita": 27.5}, {"codice_istat": "037006", "comune": "BOLOGNA", "sigla_provincia": "BO", "regione": "Emilia-Romagna", "n_contribuenti": 310489, "reddito_mediana": 25727.0, "reddito_p10": 5549.0, "reddito_p90": 62575.0, "ratio_p90_p10": 11.28, "pct_sotto_15k": 26.46, "pct_sopra_55k": 11.95, "prezzo_acq_eur_mq_med": 2700.0, "affitto_eur_mq_mese_med": 11.5, "rs_single_affitto": 16500.0, "rs_coppia_affitto": 29154.0, "rs_coppia_2f_affitto": 34182.0, "residuo_single_affitto": 6054.0, "residuo_coppia_2f_affitto": -4835.0, "indice_qualita": 23.7}, {"codice_istat": "021008", "comune": "BOLZANO .BOZEN.", "sigla_provincia": "BZ", "regione": "Trentino-Alto Adige", "n_contribuenti": 85868, "reddito_mediana": 25610.0, "reddito_p10": 5211.0, "reddito_p90": 53355.0, "ratio_p90_p10": 10.24, "pct_sotto_15k": 27.43, "pct_sopra_55k": 7.64, "prezzo_acq_eur_mq_med": 3350.0, "affitto_eur_mq_mese_med": 11.35, "rs_single_affitto": 16363.0, "rs_coppia_affitto": 28938.0, "rs_coppia_2f_affitto": 34017.0, "residuo_single_affitto": 6068.0, "residuo_coppia_2f_affitto": -4823.0, "indice_qualita": 23.9}, {"codice_istat": "017029", "comune": "BRESCIA", "sigla_provincia": "BS", "regione": "Lombardia", "n_contribuenti": 151690, "reddito_mediana": 23034.0, "reddito_p10": 4872.0, "reddito_p90": 54507.0, "ratio_p90_p10": 11.19, "pct_sotto_15k": 30.53, "pct_sopra_55k": 9.43, "prezzo_acq_eur_mq_med": 1537.5, "affitto_eur_mq_mese_med": 6.1, "rs_single_affitto": 13515.0, "rs_coppia_affitto": 22532.0, "rs_coppia_2f_affitto": 28217.0, "residuo_single_affitto": 7527.0, "residuo_coppia_2f_affitto": -3376.0, "indice_qualita": 57.0}, {"codice_istat": "074001", "comune": "BRINDISI", "sigla_provincia": "BR", "regione": "Puglia", "n_contribuenti": 53667, "reddito_mediana": 19654.0, "reddito_p10": 3590.0, "reddito_p90": 49631.0, "ratio_p90_p10": 13.82, "pct_sotto_15k": 39.74, "pct_sopra_55k": 4.09, "prezzo_acq_eur_mq_med": 1012.5, "affitto_eur_mq_mese_med": 4.75, "rs_single_affitto": 12431.0, "rs_coppia_affitto": 20928.0, "rs_coppia_2f_affitto": 26726.0, "residuo_single_affitto": 6120.0, "residuo_coppia_2f_affitto": -4694.0, "indice_qualita": 55.9}, {"codice_istat": "012026", "comune": "BUSTO ARSIZIO", "sigla_provincia": "VA", "regione": "Lombardia", "n_contribuenti": 64033, "reddito_mediana": 24221.0, "reddito_p10": 5922.0, "reddito_p90": 53835.0, "ratio_p90_p10": 9.09, "pct_sotto_15k": 25.99, "pct_sopra_55k": 8.52, "prezzo_acq_eur_mq_med": 1165.0, "affitto_eur_mq_mese_med": 4.25, "rs_single_affitto": 12030.0, "rs_coppia_affitto": 20333.0, "rs_coppia_2f_affitto": 26174.0, "residuo_single_affitto": 9416.0, "residuo_coppia_2f_affitto": -1281.0, "indice_qualita": 87.1}, {"codice_istat": "092009", "comune": "CAGLIARI", "sigla_provincia": "CA", "regione": "Sardegna", "n_contribuenti": 107978, "reddito_mediana": 23690.0, "reddito_p10": 4385.0, "reddito_p90": 61717.0, "ratio_p90_p10": 14.07, "pct_sotto_15k": 32.34, "pct_sopra_55k": 11.69, "prezzo_acq_eur_mq_med": 1875.0, "affitto_eur_mq_mese_med": 6.97, "rs_single_affitto": 14213.0, "rs_coppia_affitto": 23567.0, "rs_coppia_2f_affitto": 29178.0, "residuo_single_affitto": 7435.0, "residuo_coppia_2f_affitto": -3465.0, "indice_qualita": 46.5}, {"codice_istat": "048006", "comune": "CAMPI BISENZIO", "sigla_provincia": "FI", "regione": "Toscana", "n_contribuenti": 35671, "reddito_mediana": 21227.0, "reddito_p10": 5019.0, "reddito_p90": 49527.0, "ratio_p90_p10": 9.87, "pct_sotto_15k": 31.1, "pct_sopra_55k": 4.07, "prezzo_acq_eur_mq_med": 1900.0, "affitto_eur_mq_mese_med": 6.58, "rs_single_affitto": 13900.0, "rs_coppia_affitto": 23103.0, "rs_coppia_2f_affitto": 28747.0, "residuo_single_affitto": 6053.0, "residuo_coppia_2f_affitto": -4848.0, "indice_qualita": 30.3}, {"codice_istat": "070006", "comune": "CAMPOBASSO", "sigla_provincia": "CB", "regione": "Molise", "n_contribuenti": 34607, "reddito_mediana": 21321.0, "reddito_p10": 3921.0, "reddito_p90": 51497.0, "ratio_p90_p10": 13.13, "pct_sotto_15k": 36.1, "pct_sopra_55k": 5.92, "prezzo_acq_eur_mq_med": 800.0, "affitto_eur_mq_mese_med": 4.42, "rs_single_affitto": 12167.0, "rs_coppia_affitto": 20535.0, "rs_coppia_2f_affitto": 26361.0, "residuo_single_affitto": 7411.0, "residuo_coppia_2f_affitto": -3307.0, "indice_qualita": 76.3}, {"codice_istat": "046007", "comune": "CAPANNORI", "sigla_provincia": "LU", "regione": "Toscana", "n_contribuenti": 35260, "reddito_mediana": 22216.0, "reddito_p10": 5121.0, "reddito_p90": 50732.0, "ratio_p90_p10": 9.91, "pct_sotto_15k": 30.02, "pct_sopra_55k": 4.91, "prezzo_acq_eur_mq_med": 1145.0, "affitto_eur_mq_mese_med": 4.4, "rs_single_affitto": 12151.0, "rs_coppia_affitto": 20512.0, "rs_coppia_2f_affitto": 26339.0, "residuo_single_affitto": 8010.0, "residuo_coppia_2f_affitto": -2705.0, "indice_qualita": 73.3}, {"codice_istat": "036005", "comune": "CARPI", "sigla_provincia": "MO", "regione": "Emilia-Romagna", "n_contribuenti": 56822, "reddito_mediana": 23148.0, "reddito_p10": 5664.0, "reddito_p90": 52048.0, "ratio_p90_p10": 9.19, "pct_sotto_15k": 27.19, "pct_sopra_55k": 6.37, "prezzo_acq_eur_mq_med": 1125.0, "affitto_eur_mq_mese_med": 5.7, "rs_single_affitto": 13194.0, "rs_coppia_affitto": 22057.0, "rs_coppia_2f_affitto": 27775.0, "residuo_single_affitto": 7842.0, "residuo_coppia_2f_affitto": -3036.0, "indice_qualita": 72.0}, {"codice_istat": "045003", "comune": "CARRARA", "sigla_provincia": "MS", "regione": "Toscana", "n_contribuenti": 44200, "reddito_mediana": 22158.0, "reddito_p10": 4699.0, "reddito_p90": 51239.0, "ratio_p90_p10": 10.9, "pct_sotto_15k": 31.99, "pct_sopra_55k": 5.48, "prezzo_acq_eur_mq_med": 1275.0, "affitto_eur_mq_mese_med": 7.5, "rs_single_affitto": 14638.0, "rs_coppia_affitto": 24197.0, "rs_coppia_2f_affitto": 29764.0, "residuo_single_affitto": 6112.0, "residuo_coppia_2f_affitto": -4787.0, "indice_qualita": 48.4}, {"codice_istat": "061022", "comune": "CASERTA", "sigla_provincia": "CE", "regione": "Campania", "n_contribuenti": 48905, "reddito_mediana": 23526.0, "reddito_p10": 3996.0, "reddito_p90": 54792.0, "ratio_p90_p10": 13.71, "pct_sotto_15k": 34.14, "pct_sopra_55k": 9.74, "prezzo_acq_eur_mq_med": 1112.5, "affitto_eur_mq_mese_med": 3.25, "rs_single_affitto": 11228.0, "rs_coppia_affitto": 19145.0, "rs_coppia_2f_affitto": 25069.0, "residuo_single_affitto": 9560.0, "residuo_coppia_2f_affitto": -1012.0, "indice_qualita": 88.6}, {"codice_istat": "063023", "comune": "CASORIA", "sigla_provincia": "NA", "regione": "Campania", "n_contribuenti": 39940, "reddito_mediana": 17668.0, "reddito_p10": 3288.0, "reddito_p90": 46907.0, "ratio_p90_p10": 14.27, "pct_sotto_15k": 43.48, "pct_sopra_55k": 2.39, "prezzo_acq_eur_mq_med": 1195.0, "affitto_eur_mq_mese_med": 3.95, "rs_single_affitto": 11789.0, "rs_coppia_affitto": 19977.0, "rs_coppia_2f_affitto": 25842.0, "residuo_single_affitto": 5297.0, "residuo_coppia_2f_affitto": -6056.0, "indice_qualita": 41.5}, {"codice_istat": "087015", "comune": "CATANIA", "sigla_provincia": "CT", "regione": "Sicilia", "n_contribuenti": 168211, "reddito_mediana": 18291.0, "reddito_p10": 3325.0, "reddito_p90": 51184.0, "ratio_p90_p10": 15.39, "pct_sotto_15k": 42.58, "pct_sopra_55k": 6.57, "prezzo_acq_eur_mq_med": 1085.0, "affitto_eur_mq_mese_med": 3.85, "rs_single_affitto": 11709.0, "rs_coppia_affitto": 19858.0, "rs_coppia_2f_affitto": 25732.0, "residuo_single_affitto": 5765.0, "residuo_coppia_2f_affitto": -5374.0, "indice_qualita": 49.9}, {"codice_istat": "079023", "comune": "CATANZARO", "sigla_provincia": "CZ", "regione": "Calabria", "n_contribuenti": 53897, "reddito_mediana": 20323.0, "reddito_p10": 3797.0, "reddito_p90": 50674.0, "ratio_p90_p10": 13.35, "pct_sotto_15k": 38.21, "pct_sopra_55k": 5.19, "prezzo_acq_eur_mq_med": 957.5, "affitto_eur_mq_mese_med": 4.25, "rs_single_affitto": 12030.0, "rs_coppia_affitto": 20333.0, "rs_coppia_2f_affitto": 26174.0, "residuo_single_affitto": 6858.0, "residuo_coppia_2f_affitto": -3839.0, "indice_qualita": 65.7}, {"codice_istat": "071020", "comune": "CERIGNOLA", "sigla_provincia": "FG", "regione": "Puglia", "n_contribuenti": 34608, "reddito_mediana": 12395.0, "reddito_p10": 2428.0, "reddito_p90": 39351.0, "ratio_p90_p10": 16.21, "pct_sotto_15k": 59.58, "pct_sopra_55k": 1.48, "prezzo_acq_eur_mq_med": 975.0, "affitto_eur_mq_mese_med": 3.95, "rs_single_affitto": 11789.0, "rs_coppia_affitto": 19977.0, "rs_coppia_2f_affitto": 25842.0, "residuo_single_affitto": 453.0, "residuo_coppia_2f_affitto": -11211.0, "indice_qualita": 32.4}, {"codice_istat": "040007", "comune": "CESENA", "sigla_provincia": "FC", "regione": "Emilia-Romagna", "n_contribuenti": 77117, "reddito_mediana": 22860.0, "reddito_p10": 5668.0, "reddito_p90": 52396.0, "ratio_p90_p10": 9.24, "pct_sotto_15k": 27.49, "pct_sopra_55k": 6.94, "prezzo_acq_eur_mq_med": 1500.0, "affitto_eur_mq_mese_med": 5.07, "rs_single_affitto": 12688.0, "rs_coppia_affitto": 21308.0, "rs_coppia_2f_affitto": 27079.0, "residuo_single_affitto": 8031.0, "residuo_coppia_2f_affitto": -2768.0, "indice_qualita": 63.6}, {"codice_istat": "069022", "comune": "CHIETI", "sigla_provincia": "CH", "regione": "Abruzzo", "n_contribuenti": 36435, "reddito_mediana": 21647.0, "reddito_p10": 4275.0, "reddito_p90": 51355.0, "ratio_p90_p10": 12.01, "pct_sotto_15k": 33.58, "pct_sopra_55k": 5.8, "prezzo_acq_eur_mq_med": 830.0, "affitto_eur_mq_mese_med": 4.22, "rs_single_affitto": 12006.0, "rs_coppia_affitto": 20298.0, "rs_coppia_2f_affitto": 26141.0, "residuo_single_affitto": 7745.0, "residuo_coppia_2f_affitto": -2949.0, "indice_qualita": 79.2}, {"codice_istat": "027008", "comune": "CHIOGGIA", "sigla_provincia": "VE", "regione": "Veneto", "n_contribuenti": 36159, "reddito_mediana": 20128.0, "reddito_p10": 4065.0, "reddito_p90": 49243.0, "ratio_p90_p10": 12.11, "pct_sotto_15k": 37.02, "pct_sopra_55k": 3.77, "prezzo_acq_eur_mq_med": 1562.5, "affitto_eur_mq_mese_med": 7.38, "rs_single_affitto": 14542.0, "rs_coppia_affitto": 24054.0, "rs_coppia_2f_affitto": 29631.0, "residuo_single_affitto": 4852.0, "residuo_coppia_2f_affitto": -6047.0, "indice_qualita": 26.3}, {"codice_istat": "015077", "comune": "CINISELLO BALSAMO", "sigla_provincia": "MI", "regione": "Lombardia", "n_contribuenti": 55409, "reddito_mediana": 22532.0, "reddito_p10": 5308.0, "reddito_p90": 50776.0, "ratio_p90_p10": 9.57, "pct_sotto_15k": 29.29, "pct_sopra_55k": 4.81, "prezzo_acq_eur_mq_med": 1850.0, "affitto_eur_mq_mese_med": 7.52, "rs_single_affitto": 14654.0, "rs_coppia_affitto": 24220.0, "rs_coppia_2f_affitto": 29786.0, "residuo_single_affitto": 6346.0, "residuo_coppia_2f_affitto": -4554.0, "indice_qualita": 35.0}, {"codice_istat": "015081", "comune": "COLOGNO MONZESE", "sigla_provincia": "MI", "regione": "Lombardia", "n_contribuenti": 35169, "reddito_mediana": 23291.0, "reddito_p10": 5579.0, "reddito_p90": 51318.0, "ratio_p90_p10": 9.2, "pct_sotto_15k": 28.01, "pct_sopra_55k": 5.23, "prezzo_acq_eur_mq_med": 1887.5, "affitto_eur_mq_mese_med": 7.42, "rs_single_affitto": 14574.0, "rs_coppia_affitto": 24102.0, "rs_coppia_2f_affitto": 29675.0, "residuo_single_affitto": 6904.0, "residuo_coppia_2f_affitto": -3996.0, "indice_qualita": 40.2}, {"codice_istat": "013075", "comune": "COMO", "sigla_provincia": "CO", "regione": "Lombardia", "n_contribuenti": 61996, "reddito_mediana": 22461.0, "reddito_p10": 4356.0, "reddito_p90": 54768.0, "ratio_p90_p10": 12.57, "pct_sotto_15k": 32.19, "pct_sopra_55k": 9.75, "prezzo_acq_eur_mq_med": 1725.0, "affitto_eur_mq_mese_med": 7.6, "rs_single_affitto": 14718.0, "rs_coppia_affitto": 24316.0, "rs_coppia_2f_affitto": 29874.0, "residuo_single_affitto": 6251.0, "residuo_coppia_2f_affitto": -4648.0, "indice_qualita": 37.4}, {"codice_istat": "078045", "comune": "COSENZA", "sigla_provincia": "CS", "regione": "Calabria", "n_contribuenti": 41316, "reddito_mediana": 19759.0, "reddito_p10": 3386.0, "reddito_p90": 52247.0, "ratio_p90_p10": 15.43, "pct_sotto_15k": 40.74, "pct_sopra_55k": 7.08, "prezzo_acq_eur_mq_med": 925.0, "affitto_eur_mq_mese_med": 3.77, "rs_single_affitto": 11645.0, "rs_coppia_affitto": 19763.0, "rs_coppia_2f_affitto": 25643.0, "residuo_single_affitto": 6776.0, "residuo_coppia_2f_affitto": -3881.0, "indice_qualita": 65.7}, {"codice_istat": "019036", "comune": "CREMONA", "sigla_provincia": "CR", "regione": "Lombardia", "n_contribuenti": 55484, "reddito_mediana": 24284.0, "reddito_p10": 5670.0, "reddito_p90": 52489.0, "ratio_p90_p10": 9.26, "pct_sotto_15k": 26.04, "pct_sopra_55k": 6.63, "prezzo_acq_eur_mq_med": 912.5, "affitto_eur_mq_mese_med": 5.62, "rs_single_affitto": 13130.0, "rs_coppia_affitto": 21962.0, "rs_coppia_2f_affitto": 27687.0, "residuo_single_affitto": 8635.0, "residuo_coppia_2f_affitto": -2233.0, "indice_qualita": 86.9}, {"codice_istat": "004078", "comune": "CUNEO", "sigla_provincia": "CN", "regione": "Piemonte", "n_contribuenti": 43952, "reddito_mediana": 23768.0, "reddito_p10": 5321.0, "reddito_p90": 52410.0, "ratio_p90_p10": 9.85, "pct_sotto_15k": 28.05, "pct_sopra_55k": 6.63, "prezzo_acq_eur_mq_med": 1170.0, "affitto_eur_mq_mese_med": 4.05, "rs_single_affitto": 11870.0, "rs_coppia_affitto": 20096.0, "rs_coppia_2f_affitto": 25953.0, "residuo_single_affitto": 9239.0, "residuo_coppia_2f_affitto": -1434.0, "indice_qualita": 86.4}, {"codice_istat": "039010", "comune": "FAENZA", "sigla_provincia": "RA", "regione": "Emilia-Romagna", "n_contribuenti": 46996, "reddito_mediana": 22499.0, "reddito_p10": 5564.0, "reddito_p90": 51443.0, "ratio_p90_p10": 9.25, "pct_sotto_15k": 28.11, "pct_sopra_55k": 5.84, "prezzo_acq_eur_mq_med": 1212.5, "affitto_eur_mq_mese_med": 4.3, "rs_single_affitto": 12070.0, "rs_coppia_affitto": 20393.0, "rs_coppia_2f_affitto": 26229.0, "residuo_single_affitto": 8256.0, "residuo_coppia_2f_affitto": -2447.0, "indice_qualita": 74.2}, {"codice_istat": "041013", "comune": "FANO", "sigla_provincia": "PU", "regione": "Marche", "n_contribuenti": 47551, "reddito_mediana": 22288.0, "reddito_p10": 4794.0, "reddito_p90": 52642.0, "ratio_p90_p10": 10.98, "pct_sotto_15k": 31.32, "pct_sopra_55k": 7.3, "prezzo_acq_eur_mq_med": 1475.0, "affitto_eur_mq_mese_med": 5.7, "rs_single_affitto": 13194.0, "rs_coppia_affitto": 22057.0, "rs_coppia_2f_affitto": 27775.0, "residuo_single_affitto": 7277.0, "residuo_coppia_2f_affitto": -3600.0, "indice_qualita": 55.9}, {"codice_istat": "038008", "comune": "FERRARA", "sigla_provincia": "FE", "regione": "Emilia-Romagna", "n_contribuenti": 104334, "reddito_mediana": 23916.0, "reddito_p10": 5436.0, "reddito_p90": 53848.0, "ratio_p90_p10": 9.91, "pct_sotto_15k": 27.46, "pct_sopra_55k": 8.56, "prezzo_acq_eur_mq_med": 950.0, "affitto_eur_mq_mese_med": 4.18, "rs_single_affitto": 11974.0, "rs_coppia_affitto": 20250.0, "rs_coppia_2f_affitto": 26096.0, "residuo_single_affitto": 9258.0, "residuo_coppia_2f_affitto": -1430.0, "indice_qualita": 92.8}, {"codice_istat": "048017", "comune": "FIRENZE", "sigla_provincia": "FI", "regione": "Toscana", "n_contribuenti": 284300, "reddito_mediana": 24214.0, "reddito_p10": 5075.0, "reddito_p90": 60913.0, "ratio_p90_p10": 12.0, "pct_sotto_15k": 28.84, "pct_sopra_55k": 11.44, "prezzo_acq_eur_mq_med": 2637.5, "affitto_eur_mq_mese_med": 8.32, "rs_single_affitto": 15000.0, "rs_coppia_affitto": 25171.0, "rs_coppia_2f_affitto": 30670.0, "residuo_single_affitto": 7191.0, "residuo_coppia_2f_affitto": -3928.0, "indice_qualita": 34.0}, {"codice_istat": "071024", "comune": "FOGGIA", "sigla_provincia": "FG", "regione": "Puglia", "n_contribuenti": 96668, "reddito_mediana": 18680.0, "reddito_p10": 3320.0, "reddito_p90": 48895.0, "ratio_p90_p10": 14.73, "pct_sotto_15k": 41.81, "pct_sopra_55k": 3.67, "prezzo_acq_eur_mq_med": 950.0, "affitto_eur_mq_mese_med": 5.38, "rs_single_affitto": 12937.0, "rs_coppia_affitto": 21677.0, "rs_coppia_2f_affitto": 27422.0, "residuo_single_affitto": 5102.0, "residuo_coppia_2f_affitto": -6103.0, "indice_qualita": 46.2}, {"codice_istat": "054018", "comune": "FOLIGNO", "sigla_provincia": "PG", "regione": "Umbria", "n_contribuenti": 41024, "reddito_mediana": 22154.0, "reddito_p10": 4816.0, "reddito_p90": 50938.0, "ratio_p90_p10": 10.58, "pct_sotto_15k": 30.93, "pct_sopra_55k": 5.15, "prezzo_acq_eur_mq_med": 925.0, "affitto_eur_mq_mese_med": 3.15, "rs_single_affitto": 11148.0, "rs_coppia_affitto": 19026.0, "rs_coppia_2f_affitto": 24959.0, "residuo_single_affitto": 8719.0, "residuo_coppia_2f_affitto": -1841.0, "indice_qualita": 87.4}, {"codice_istat": "040012", "comune": "FORLI'", "sigla_provincia": "FC", "regione": "Emilia-Romagna", "n_contribuenti": 94352, "reddito_mediana": 22881.0, "reddito_p10": 5417.0, "reddito_p90": 52190.0, "ratio_p90_p10": 9.63, "pct_sotto_15k": 27.67, "pct_sopra_55k": 6.66, "prezzo_acq_eur_mq_med": 1400.0, "affitto_eur_mq_mese_med": 5.1, "rs_single_affitto": 12712.0, "rs_coppia_affitto": 21344.0, "rs_coppia_2f_affitto": 27113.0, "residuo_single_affitto": 8027.0, "residuo_coppia_2f_affitto": -2777.0, "indice_qualita": 66.4}, {"codice_istat": "012070", "comune": "GALLARATE", "sigla_provincia": "VA", "regione": "Lombardia", "n_contribuenti": 39317, "reddito_mediana": 23437.0, "reddito_p10": 5334.0, "reddito_p90": 52829.0, "ratio_p90_p10": 9.9, "pct_sotto_15k": 28.32, "pct_sopra_55k": 7.3, "prezzo_acq_eur_mq_med": 1065.0, "affitto_eur_mq_mese_med": 4.4, "rs_single_affitto": 12151.0, "rs_coppia_affitto": 20512.0, "rs_coppia_2f_affitto": 26339.0, "residuo_single_affitto": 8811.0, "residuo_coppia_2f_affitto": -1904.0, "indice_qualita": 84.6}, {"codice_istat": "085007", "comune": "GELA", "sigla_provincia": "CL", "regione": "Sicilia", "n_contribuenti": 41651, "reddito_mediana": 17571.0, "reddito_p10": 3070.0, "reddito_p90": 47833.0, "ratio_p90_p10": 15.58, "pct_sotto_15k": 44.18, "pct_sopra_55k": 3.13, "prezzo_acq_eur_mq_med": 655.0, "affitto_eur_mq_mese_med": 2.5, "rs_single_affitto": 10626.0, "rs_coppia_affitto": 18253.0, "rs_coppia_2f_affitto": 24241.0, "residuo_single_affitto": 6102.0, "residuo_coppia_2f_affitto": -5100.0, "indice_qualita": 64.3}, {"codice_istat": "010025", "comune": "GENOVA", "sigla_provincia": "GE", "regione": "Liguria", "n_contribuenti": 469207, "reddito_mediana": 22861.0, "reddito_p10": 4416.0, "reddito_p90": 53297.0, "ratio_p90_p10": 12.07, "pct_sotto_15k": 32.43, "pct_sopra_55k": 7.94, "prezzo_acq_eur_mq_med": 1425.0, "affitto_eur_mq_mese_med": 6.6, "rs_single_affitto": 13916.0, "rs_coppia_affitto": 23127.0, "rs_coppia_2f_affitto": 28770.0, "residuo_single_affitto": 7114.0, "residuo_coppia_2f_affitto": -3788.0, "indice_qualita": 55.5}, {"codice_istat": "063034", "comune": "GIUGLIANO IN CAMPANIA", "sigla_provincia": "NA", "regione": "Campania", "n_contribuenti": 64975, "reddito_mediana": 16555.0, "reddito_p10": 3041.0, "reddito_p90": 47023.0, "ratio_p90_p10": 15.46, "pct_sotto_15k": 46.47, "pct_sopra_55k": 2.95, "prezzo_acq_eur_mq_med": 1030.0, "affitto_eur_mq_mese_med": 3.7, "rs_single_affitto": 11589.0, "rs_coppia_affitto": 19679.0, "rs_coppia_2f_affitto": 25566.0, "residuo_single_affitto": 4716.0, "residuo_coppia_2f_affitto": -6963.0, "indice_qualita": 39.6}, {"codice_istat": "053011", "comune": "GROSSETO", "sigla_provincia": "GR", "regione": "Toscana", "n_contribuenti": 63037, "reddito_mediana": 21778.0, "reddito_p10": 4694.0, "reddito_p90": 51240.0, "ratio_p90_p10": 10.92, "pct_sotto_15k": 32.26, "pct_sopra_55k": 5.69, "prezzo_acq_eur_mq_med": 1475.0, "affitto_eur_mq_mese_med": 6.9, "rs_single_affitto": 14157.0, "rs_coppia_affitto": 23483.0, "rs_coppia_2f_affitto": 29101.0, "residuo_single_affitto": 6223.0, "residuo_coppia_2f_affitto": -4678.0, "indice_qualita": 44.1}, {"codice_istat": "058047", "comune": "GUIDONIA MONTECELIO", "sigla_provincia": "RM", "regione": "Lazio", "n_contribuenti": 60068, "reddito_mediana": 21220.0, "reddito_p10": 4336.0, "reddito_p90": 50223.0, "ratio_p90_p10": 11.58, "pct_sotto_15k": 34.49, "pct_sopra_55k": 4.46, "prezzo_acq_eur_mq_med": 1375.0, "affitto_eur_mq_mese_med": 7.05, "rs_single_affitto": 14277.0, "rs_coppia_affitto": 23662.0, "rs_coppia_2f_affitto": 29267.0, "residuo_single_affitto": 5767.0, "residuo_coppia_2f_affitto": -5134.0, "indice_qualita": 41.8}, {"codice_istat": "037032", "comune": "IMOLA", "sigla_provincia": "BO", "regione": "Emilia-Romagna", "n_contribuenti": 55909, "reddito_mediana": 24884.0, "reddito_p10": 6323.0, "reddito_p90": 52413.0, "ratio_p90_p10": 8.29, "pct_sotto_15k": 24.34, "pct_sopra_55k": 6.37, "prezzo_acq_eur_mq_med": 1387.5, "affitto_eur_mq_mese_med": 6.0, "rs_single_affitto": 13435.0, "rs_coppia_affitto": 22414.0, "rs_coppia_2f_affitto": 28107.0, "residuo_single_affitto": 8801.0, "residuo_coppia_2f_affitto": -2102.0, "indice_qualita": 75.4}, {"codice_istat": "011015", "comune": "LA SPEZIA", "sigla_provincia": "SP", "regione": "Liguria", "n_contribuenti": 70938, "reddito_mediana": 22907.0, "reddito_p10": 5047.0, "reddito_p90": 51607.0, "ratio_p90_p10": 10.23, "pct_sotto_15k": 30.13, "pct_sopra_55k": 5.73, "prezzo_acq_eur_mq_med": 1550.0, "affitto_eur_mq_mese_med": 7.25, "rs_single_affitto": 14438.0, "rs_coppia_affitto": 23899.0, "rs_coppia_2f_affitto": 29488.0, "residuo_single_affitto": 6753.0, "residuo_coppia_2f_affitto": -4147.0, "indice_qualita": 47.9}, {"codice_istat": "059011", "comune": "LATINA", "sigla_provincia": "LT", "regione": "Lazio", "n_contribuenti": 91963, "reddito_mediana": 21058.0, "reddito_p10": 3997.0, "reddito_p90": 51635.0, "ratio_p90_p10": 12.92, "pct_sotto_15k": 36.35, "pct_sopra_55k": 6.21, "prezzo_acq_eur_mq_med": 1250.0, "affitto_eur_mq_mese_med": 5.8, "rs_single_affitto": 13274.0, "rs_coppia_affitto": 22176.0, "rs_coppia_2f_affitto": 27886.0, "residuo_single_affitto": 6411.0, "residuo_coppia_2f_affitto": -4480.0, "indice_qualita": 52.5}, {"codice_istat": "075035", "comune": "LECCE", "sigla_provincia": "LE", "regione": "Puglia", "n_contribuenti": 66513, "reddito_mediana": 20598.0, "reddito_p10": 3548.0, "reddito_p90": 54026.0, "ratio_p90_p10": 15.23, "pct_sotto_15k": 39.03, "pct_sopra_55k": 8.98, "prezzo_acq_eur_mq_med": 900.0, "affitto_eur_mq_mese_med": 3.95, "rs_single_affitto": 11789.0, "rs_coppia_affitto": 19977.0, "rs_coppia_2f_affitto": 25842.0, "residuo_single_affitto": 7219.0, "residuo_coppia_2f_affitto": -3441.0, "indice_qualita": 71.3}, {"codice_istat": "015118", "comune": "LEGNANO", "sigla_provincia": "MI", "regione": "Lombardia", "n_contribuenti": 46197, "reddito_mediana": 25335.0, "reddito_p10": 5669.0, "reddito_p90": 54207.0, "ratio_p90_p10": 9.56, "pct_sotto_15k": 25.95, "pct_sopra_55k": 8.92, "prezzo_acq_eur_mq_med": 1437.5, "affitto_eur_mq_mese_med": 6.47, "rs_single_affitto": 13812.0, "rs_coppia_affitto": 22972.0, "rs_coppia_2f_affitto": 28626.0, "residuo_single_affitto": 8815.0, "residuo_coppia_2f_affitto": -2087.0, "indice_qualita": 74.2}, {"codice_istat": "108028", "comune": "LISSONE", "sigla_provincia": "MB", "regione": "Lombardia", "n_contribuenti": 35045, "reddito_mediana": 24984.0, "reddito_p10": 5787.0, "reddito_p90": 54141.0, "ratio_p90_p10": 9.36, "pct_sotto_15k": 25.97, "pct_sopra_55k": 8.85, "prezzo_acq_eur_mq_med": 1625.0, "affitto_eur_mq_mese_med": 5.6, "rs_single_affitto": 13114.0, "rs_coppia_affitto": 21938.0, "rs_coppia_2f_affitto": 27665.0, "residuo_single_affitto": 9106.0, "residuo_coppia_2f_affitto": -1759.0, "indice_qualita": 72.2}, {"codice_istat": "049009", "comune": "LIVORNO", "sigla_provincia": "LI", "regione": "Toscana", "n_contribuenti": 114563, "reddito_mediana": 23486.0, "reddito_p10": 5094.0, "reddito_p90": 52551.0, "ratio_p90_p10": 10.32, "pct_sotto_15k": 29.7, "pct_sopra_55k": 6.87, "prezzo_acq_eur_mq_med": 1600.0, "affitto_eur_mq_mese_med": 7.8, "rs_single_affitto": 14879.0, "rs_coppia_affitto": 24553.0, "rs_coppia_2f_affitto": 30095.0, "residuo_single_affitto": 6804.0, "residuo_coppia_2f_affitto": -4095.0, "indice_qualita": 47.1}, {"codice_istat": "098031", "comune": "LODI", "sigla_provincia": "LO", "regione": "Lombardia", "n_contribuenti": 34704, "reddito_mediana": 25747.0, "reddito_p10": 6088.0, "reddito_p90": 54056.0, "ratio_p90_p10": 8.88, "pct_sotto_15k": 24.11, "pct_sopra_55k": 8.67, "prezzo_acq_eur_mq_med": 1537.5, "affitto_eur_mq_mese_med": 8.35, "rs_single_affitto": 15000.0, "rs_coppia_affitto": 25207.0, "rs_coppia_2f_affitto": 30703.0, "residuo_single_affitto": 8197.0, "residuo_coppia_2f_affitto": -2940.0, "indice_qualita": 61.8}, {"codice_istat": "046017", "comune": "LUCCA", "sigla_provincia": "LU", "regione": "Toscana", "n_contribuenti": 68343, "reddito_mediana": 23595.0, "reddito_p10": 4970.0, "reddito_p90": 53831.0, "ratio_p90_p10": 10.83, "pct_sotto_15k": 29.31, "pct_sopra_55k": 8.56, "prezzo_acq_eur_mq_med": 1487.5, "affitto_eur_mq_mese_med": 5.33, "rs_single_affitto": 12897.0, "rs_coppia_affitto": 21617.0, "rs_coppia_2f_affitto": 27367.0, "residuo_single_affitto": 8357.0, "residuo_coppia_2f_affitto": -2475.0, "indice_qualita": 67.7}, {"codice_istat": "071029", "comune": "MANFREDONIA", "sigla_provincia": "FG", "regione": "Puglia", "n_contribuenti": 34426, "reddito_mediana": 16326.0, "reddito_p10": 3011.0, "reddito_p90": 46542.0, "ratio_p90_p10": 15.46, "pct_sotto_15k": 46.96, "pct_sopra_55k": 2.67, "prezzo_acq_eur_mq_med": 1237.5, "affitto_eur_mq_mese_med": 4.88, "rs_single_affitto": 12536.0, "rs_coppia_affitto": 21082.0, "rs_coppia_2f_affitto": 26870.0, "residuo_single_affitto": 3857.0, "residuo_coppia_2f_affitto": -8042.0, "indice_qualita": 25.1}, {"codice_istat": "081011", "comune": "MARSALA", "sigla_provincia": "TP", "regione": "Sicilia", "n_contribuenti": 50017, "reddito_mediana": 14505.0, "reddito_p10": 2712.0, "reddito_p90": 45282.0, "ratio_p90_p10": 16.7, "pct_sotto_15k": 51.44, "pct_sopra_55k": 2.71, "prezzo_acq_eur_mq_med": 925.0, "affitto_eur_mq_mese_med": 3.15, "rs_single_affitto": 11148.0, "rs_coppia_affitto": 19026.0, "rs_coppia_2f_affitto": 24959.0, "residuo_single_affitto": 2510.0, "residuo_coppia_2f_affitto": -8569.0, "indice_qualita": 33.8}, {"codice_istat": "045010", "comune": "MASSA", "sigla_provincia": "MS", "regione": "Toscana", "n_contribuenti": 49406, "reddito_mediana": 21167.0, "reddito_p10": 4541.0, "reddito_p90": 50663.0, "ratio_p90_p10": 11.16, "pct_sotto_15k": 33.54, "pct_sopra_55k": 5.23, "prezzo_acq_eur_mq_med": 1550.0, "affitto_eur_mq_mese_med": 6.8, "rs_single_affitto": 14077.0, "rs_coppia_affitto": 23365.0, "rs_coppia_2f_affitto": 28990.0, "residuo_single_affitto": 5882.0, "residuo_coppia_2f_affitto": -5019.0, "indice_qualita": 38.2}, {"codice_istat": "077014", "comune": "MATERA", "sigla_provincia": "MT", "regione": "Basilicata", "n_contribuenti": 43192, "reddito_mediana": 20915.0, "reddito_p10": 4091.0, "reddito_p90": 50266.0, "ratio_p90_p10": 12.29, "pct_sotto_15k": 35.12, "pct_sopra_55k": 4.69, "prezzo_acq_eur_mq_med": 1625.0, "affitto_eur_mq_mese_med": 5.4, "rs_single_affitto": 12953.0, "rs_coppia_affitto": 21700.0, "rs_coppia_2f_affitto": 27444.0, "residuo_single_affitto": 6557.0, "residuo_coppia_2f_affitto": -4284.0, "indice_qualita": 43.6}, {"codice_istat": "083048", "comune": "MESSINA", "sigla_provincia": "ME", "regione": "Sicilia", "n_contribuenti": 134747, "reddito_mediana": 20182.0, "reddito_p10": 3727.0, "reddito_p90": 51612.0, "ratio_p90_p10": 13.85, "pct_sotto_15k": 38.42, "pct_sopra_55k": 6.43, "prezzo_acq_eur_mq_med": 887.5, "affitto_eur_mq_mese_med": 4.4, "rs_single_affitto": 12151.0, "rs_coppia_affitto": 20512.0, "rs_coppia_2f_affitto": 26339.0, "residuo_single_affitto": 6675.0, "residuo_coppia_2f_affitto": -4040.0, "indice_qualita": 65.6}, {"codice_istat": "015146", "comune": "MILANO", "sigla_provincia": "MI", "regione": "Lombardia", "n_contribuenti": 1052520, "reddito_mediana": 25924.0, "reddito_p10": 4864.0, "reddito_p90": 81087.0, "ratio_p90_p10": 16.67, "pct_sotto_15k": 29.38, "pct_sopra_55k": 17.45, "prezzo_acq_eur_mq_med": 3350.0, "affitto_eur_mq_mese_med": 12.25, "rs_single_affitto": 17186.0, "rs_coppia_affitto": 30236.0, "rs_coppia_2f_affitto": 35011.0, "residuo_single_affitto": 5734.0, "residuo_coppia_2f_affitto": -5154.0, "indice_qualita": 20.1}, {"codice_istat": "036023", "comune": "MODENA", "sigla_provincia": "MO", "regione": "Emilia-Romagna", "n_contribuenti": 143706, "reddito_mediana": 25679.0, "reddito_p10": 5856.0, "reddito_p90": 58684.0, "ratio_p90_p10": 10.02, "pct_sotto_15k": 25.33, "pct_sopra_55k": 10.9, "prezzo_acq_eur_mq_med": 1700.0, "affitto_eur_mq_mese_med": 7.25, "rs_single_affitto": 14438.0, "rs_coppia_affitto": 23899.0, "rs_coppia_2f_affitto": 29488.0, "residuo_single_affitto": 8572.0, "residuo_coppia_2f_affitto": -2328.0, "indice_qualita": 64.1}, {"codice_istat": "088006", "comune": "MODICA", "sigla_provincia": "RG", "regione": "Sicilia", "n_contribuenti": 35896, "reddito_mediana": 16642.0, "reddito_p10": 3359.0, "reddito_p90": 45336.0, "ratio_p90_p10": 13.5, "pct_sotto_15k": 45.49, "pct_sopra_55k": 2.86, "prezzo_acq_eur_mq_med": 725.0, "affitto_eur_mq_mese_med": 3.88, "rs_single_affitto": 11733.0, "rs_coppia_affitto": 19893.0, "rs_coppia_2f_affitto": 25765.0, "residuo_single_affitto": 4665.0, "residuo_coppia_2f_affitto": -7008.0, "indice_qualita": 47.6}, {"codice_istat": "072029", "comune": "MOLFETTA", "sigla_provincia": "BA", "regione": "Puglia", "n_contribuenti": 41231, "reddito_mediana": 18299.0, "reddito_p10": 3273.0, "reddito_p90": 49240.0, "ratio_p90_p10": 15.04, "pct_sotto_15k": 42.67, "pct_sopra_55k": 4.32, "prezzo_acq_eur_mq_med": 1425.0, "affitto_eur_mq_mese_med": 4.75, "rs_single_affitto": 12431.0, "rs_coppia_affitto": 20928.0, "rs_coppia_2f_affitto": 26726.0, "residuo_single_affitto": 5231.0, "residuo_coppia_2f_affitto": -6019.0, "indice_qualita": 34.4}, {"codice_istat": "001156", "comune": "MONCALIERI", "sigla_provincia": "TO", "regione": "Piemonte", "n_contribuenti": 41751, "reddito_mediana": 24462.0, "reddito_p10": 5492.0, "reddito_p90": 54204.0, "ratio_p90_p10": 9.87, "pct_sotto_15k": 27.15, "pct_sopra_55k": 8.98, "prezzo_acq_eur_mq_med": 1250.0, "affitto_eur_mq_mese_med": 5.6, "rs_single_affitto": 13114.0, "rs_coppia_affitto": 21938.0, "rs_coppia_2f_affitto": 27665.0, "residuo_single_affitto": 8764.0, "residuo_coppia_2f_affitto": -2102.0, "indice_qualita": 78.9}, {"codice_istat": "072030", "comune": "MONOPOLI", "sigla_provincia": "BA", "regione": "Puglia", "n_contribuenti": 35072, "reddito_mediana": 17706.0, "reddito_p10": 3503.0, "reddito_p90": 47478.0, "ratio_p90_p10": 13.55, "pct_sotto_15k": 42.87, "pct_sopra_55k": 3.64, "prezzo_acq_eur_mq_med": 1650.0, "affitto_eur_mq_mese_med": 5.6, "rs_single_affitto": 13114.0, "rs_coppia_affitto": 21938.0, "rs_coppia_2f_affitto": 27665.0, "residuo_single_affitto": 4331.0, "residuo_coppia_2f_affitto": -7215.0, "indice_qualita": 18.0}, {"codice_istat": "108033", "comune": "MONZA", "sigla_provincia": "MB", "regione": "Lombardia", "n_contribuenti": 94782, "reddito_mediana": 27565.0, "reddito_p10": 5664.0, "reddito_p90": 69971.0, "ratio_p90_p10": 12.35, "pct_sotto_15k": 25.38, "pct_sopra_55k": 14.7, "prezzo_acq_eur_mq_med": 2125.0, "affitto_eur_mq_mese_med": 9.07, "rs_single_affitto": 15000.0, "rs_coppia_affitto": 26063.0, "rs_coppia_2f_affitto": 31498.0, "residuo_single_affitto": 9390.0, "residuo_coppia_2f_affitto": -2177.0, "indice_qualita": 53.9}, {"codice_istat": "063049", "comune": "NAPOLI", "sigla_provincia": "NA", "regione": "Campania", "n_contribuenti": 511662, "reddito_mediana": 18753.0, "reddito_p10": 3270.0, "reddito_p90": 52695.0, "ratio_p90_p10": 16.11, "pct_sotto_15k": 42.32, "pct_sopra_55k": 7.83, "prezzo_acq_eur_mq_med": 1750.0, "affitto_eur_mq_mese_med": 6.1, "rs_single_affitto": 13515.0, "rs_coppia_affitto": 22532.0, "rs_coppia_2f_affitto": 28217.0, "residuo_single_affitto": 4718.0, "residuo_coppia_2f_affitto": -6528.0, "indice_qualita": 19.5}, {"codice_istat": "003106", "comune": "NOVARA", "sigla_provincia": "NO", "regione": "Piemonte", "n_contribuenti": 77340, "reddito_mediana": 24520.0, "reddito_p10": 5733.0, "reddito_p90": 52577.0, "ratio_p90_p10": 9.17, "pct_sotto_15k": 26.32, "pct_sopra_55k": 6.69, "prezzo_acq_eur_mq_med": 970.0, "affitto_eur_mq_mese_med": 3.8, "rs_single_affitto": 11669.0, "rs_coppia_affitto": 19798.0, "rs_coppia_2f_affitto": 25677.0, "residuo_single_affitto": 9882.0, "residuo_coppia_2f_affitto": -759.0, "indice_qualita": 92.6}, {"codice_istat": "090047", "comune": "OLBIA", "sigla_provincia": "SS", "regione": "Sardegna", "n_contribuenti": 44356, "reddito_mediana": 19210.0, "reddito_p10": 3979.0, "reddito_p90": 48868.0, "ratio_p90_p10": 12.28, "pct_sotto_15k": 38.23, "pct_sopra_55k": 4.37, "prezzo_acq_eur_mq_med": 1875.0, "affitto_eur_mq_mese_med": 7.75, "rs_single_affitto": 14839.0, "rs_coppia_affitto": 24494.0, "rs_coppia_2f_affitto": 30040.0, "residuo_single_affitto": 4028.0, "residuo_coppia_2f_affitto": -7067.0, "indice_qualita": 8.3}, {"codice_istat": "015166", "comune": "PADERNO DUGNANO", "sigla_provincia": "MI", "regione": "Lombardia", "n_contribuenti": 36447, "reddito_mediana": 24657.0, "reddito_p10": 6044.0, "reddito_p90": 52638.0, "ratio_p90_p10": 8.71, "pct_sotto_15k": 25.28, "pct_sopra_55k": 6.76, "prezzo_acq_eur_mq_med": 1775.0, "affitto_eur_mq_mese_med": 7.05, "rs_single_affitto": 14277.0, "rs_coppia_affitto": 23662.0, "rs_coppia_2f_affitto": 29267.0, "residuo_single_affitto": 8022.0, "residuo_coppia_2f_affitto": -2879.0, "indice_qualita": 55.9}, {"codice_istat": "028060", "comune": "PADOVA", "sigla_provincia": "PD", "regione": "Veneto", "n_contribuenti": 162532, "reddito_mediana": 24327.0, "reddito_p10": 4656.0, "reddito_p90": 65654.0, "ratio_p90_p10": 14.1, "pct_sotto_15k": 30.2, "pct_sopra_55k": 12.66, "prezzo_acq_eur_mq_med": 1250.0, "affitto_eur_mq_mese_med": 5.9, "rs_single_affitto": 13354.0, "rs_coppia_affitto": 22295.0, "rs_coppia_2f_affitto": 27996.0, "residuo_single_affitto": 8496.0, "residuo_coppia_2f_affitto": -2407.0, "indice_qualita": 75.8}, {"codice_istat": "082053", "comune": "PALERMO", "sigla_provincia": "PA", "regione": "Sicilia", "n_contribuenti": 369913, "reddito_mediana": 19553.0, "reddito_p10": 3563.0, "reddito_p90": 52297.0, "ratio_p90_p10": 14.68, "pct_sotto_15k": 40.22, "pct_sopra_55k": 7.31, "prezzo_acq_eur_mq_med": 1150.0, "affitto_eur_mq_mese_med": 3.95, "rs_single_affitto": 11789.0, "rs_coppia_affitto": 19977.0, "rs_coppia_2f_affitto": 25842.0, "residuo_single_affitto": 6533.0, "residuo_coppia_2f_affitto": -4213.0, "indice_qualita": 56.6}, {"codice_istat": "034027", "comune": "PARMA", "sigla_provincia": "PR", "regione": "Emilia-Romagna", "n_contribuenti": 152724, "reddito_mediana": 25654.0, "reddito_p10": 5766.0, "reddito_p90": 59645.0, "ratio_p90_p10": 10.34, "pct_sotto_15k": 25.67, "pct_sopra_55k": 11.12, "prezzo_acq_eur_mq_med": 1550.0, "affitto_eur_mq_mese_med": 6.65, "rs_single_affitto": 13956.0, "rs_coppia_affitto": 23186.0, "rs_coppia_2f_affitto": 28825.0, "residuo_single_affitto": 8916.0, "residuo_coppia_2f_affitto": -1986.0, "indice_qualita": 72.2}, {"codice_istat": "018110", "comune": "PAVIA", "sigla_provincia": "PV", "regione": "Lombardia", "n_contribuenti": 54852, "reddito_mediana": 25623.0, "reddito_p10": 5311.0, "reddito_p90": 68733.0, "ratio_p90_p10": 12.94, "pct_sotto_15k": 26.81, "pct_sopra_55k": 13.78, "prezzo_acq_eur_mq_med": 1500.0, "affitto_eur_mq_mese_med": 6.95, "rs_single_affitto": 14197.0, "rs_coppia_affitto": 23543.0, "rs_coppia_2f_affitto": 29156.0, "residuo_single_affitto": 8716.0, "residuo_coppia_2f_affitto": -2185.0, "indice_qualita": 71.3}, {"codice_istat": "054039", "comune": "PERUGIA", "sigla_provincia": "PG", "regione": "Umbria", "n_contribuenti": 123262, "reddito_mediana": 22569.0, "reddito_p10": 4825.0, "reddito_p90": 53267.0, "ratio_p90_p10": 11.04, "pct_sotto_15k": 30.53, "pct_sopra_55k": 8.02, "prezzo_acq_eur_mq_med": 895.0, "affitto_eur_mq_mese_med": 3.52, "rs_single_affitto": 11444.0, "rs_coppia_affitto": 19466.0, "rs_coppia_2f_affitto": 25367.0, "residuo_single_affitto": 8770.0, "residuo_coppia_2f_affitto": -1836.0, "indice_qualita": 88.9}, {"codice_istat": "041044", "comune": "PESARO", "sigla_provincia": "PU", "regione": "Marche", "n_contribuenti": 75874, "reddito_mediana": 22317.0, "reddito_p10": 4898.0, "reddito_p90": 52578.0, "ratio_p90_p10": 10.73, "pct_sotto_15k": 30.86, "pct_sopra_55k": 7.23, "prezzo_acq_eur_mq_med": 1550.0, "affitto_eur_mq_mese_med": 5.75, "rs_single_affitto": 13234.0, "rs_coppia_affitto": 22116.0, "rs_coppia_2f_affitto": 27831.0, "residuo_single_affitto": 7267.0, "residuo_coppia_2f_affitto": -3618.0, "indice_qualita": 53.7}, {"codice_istat": "068028", "comune": "PESCARA", "sigla_provincia": "PE", "regione": "Abruzzo", "n_contribuenti": 86907, "reddito_mediana": 21420.0, "reddito_p10": 3927.0, "reddito_p90": 53830.0, "ratio_p90_p10": 13.71, "pct_sotto_15k": 36.06, "pct_sopra_55k": 8.74, "prezzo_acq_eur_mq_med": 1230.0, "affitto_eur_mq_mese_med": 4.75, "rs_single_affitto": 12431.0, "rs_coppia_affitto": 20928.0, "rs_coppia_2f_affitto": 26726.0, "residuo_single_affitto": 7278.0, "residuo_coppia_2f_affitto": -3482.0, "indice_qualita": 62.8}, {"codice_istat": "033032", "comune": "PIACENZA", "sigla_provincia": "PC", "regione": "Emilia-Romagna", "n_contribuenti": 79935, "reddito_mediana": 24198.0, "reddito_p10": 5419.0, "reddito_p90": 54230.0, "ratio_p90_p10": 10.01, "pct_sotto_15k": 26.8, "pct_sopra_55k": 9.03, "prezzo_acq_eur_mq_med": 982.5, "affitto_eur_mq_mese_med": 3.45, "rs_single_affitto": 11388.0, "rs_coppia_affitto": 19382.0, "rs_coppia_2f_affitto": 25290.0, "residuo_single_affitto": 9881.0, "residuo_coppia_2f_affitto": -717.0, "indice_qualita": 92.2}, {"codice_istat": "050026", "comune": "PISA", "sigla_provincia": "PI", "regione": "Toscana", "n_contribuenti": 68451, "reddito_mediana": 24089.0, "reddito_p10": 4842.0, "reddito_p90": 54931.0, "ratio_p90_p10": 11.34, "pct_sotto_15k": 30.24, "pct_sopra_55k": 9.91, "prezzo_acq_eur_mq_med": 1787.5, "affitto_eur_mq_mese_med": 7.5, "rs_single_affitto": 14638.0, "rs_coppia_affitto": 24197.0, "rs_coppia_2f_affitto": 29764.0, "residuo_single_affitto": 7380.0, "residuo_coppia_2f_affitto": -3520.0, "indice_qualita": 48.3}, {"codice_istat": "047014", "comune": "PISTOIA", "sigla_provincia": "PT", "regione": "Toscana", "n_contribuenti": 67739, "reddito_mediana": 22680.0, "reddito_p10": 5239.0, "reddito_p90": 51877.0, "ratio_p90_p10": 9.9, "pct_sotto_15k": 29.2, "pct_sopra_55k": 6.26, "prezzo_acq_eur_mq_med": 1412.5, "affitto_eur_mq_mese_med": 6.75, "rs_single_affitto": 14036.0, "rs_coppia_affitto": 23305.0, "rs_coppia_2f_affitto": 28935.0, "residuo_single_affitto": 6905.0, "residuo_coppia_2f_affitto": -3997.0, "indice_qualita": 53.5}, {"codice_istat": "058079", "comune": "POMEZIA", "sigla_provincia": "RM", "regione": "Lazio", "n_contribuenti": 45649, "reddito_mediana": 21617.0, "reddito_p10": 4446.0, "reddito_p90": 50563.0, "ratio_p90_p10": 11.37, "pct_sotto_15k": 33.64, "pct_sopra_55k": 4.73, "prezzo_acq_eur_mq_med": 1412.5, "affitto_eur_mq_mese_med": 6.12, "rs_single_affitto": 13531.0, "rs_coppia_affitto": 22556.0, "rs_coppia_2f_affitto": 28239.0, "residuo_single_affitto": 6585.0, "residuo_coppia_2f_affitto": -4318.0, "indice_qualita": 49.9}, {"codice_istat": "093033", "comune": "PORDENONE", "sigla_provincia": "PN", "regione": "Friuli-Venezia Giulia", "n_contribuenti": 41536, "reddito_mediana": 24627.0, "reddito_p10": 5414.0, "reddito_p90": 54404.0, "ratio_p90_p10": 10.05, "pct_sotto_15k": 27.15, "pct_sopra_55k": 9.23, "prezzo_acq_eur_mq_med": 800.0, "affitto_eur_mq_mese_med": 3.5, "rs_single_affitto": 11428.0, "rs_coppia_affitto": 19442.0, "rs_coppia_2f_affitto": 25345.0, "residuo_single_affitto": 10133.0, "residuo_coppia_2f_affitto": -471.0, "indice_qualita": 97.3}, {"codice_istat": "076063", "comune": "POTENZA", "sigla_provincia": "PZ", "regione": "Basilicata", "n_contribuenti": 45862, "reddito_mediana": 22449.0, "reddito_p10": 4411.0, "reddito_p90": 52036.0, "ratio_p90_p10": 11.8, "pct_sotto_15k": 32.31, "pct_sopra_55k": 6.41, "prezzo_acq_eur_mq_med": 855.0, "affitto_eur_mq_mese_med": 3.4, "rs_single_affitto": 11348.0, "rs_coppia_affitto": 19323.0, "rs_coppia_2f_affitto": 25235.0, "residuo_single_affitto": 8763.0, "residuo_coppia_2f_affitto": -1828.0, "indice_qualita": 89.9}, {"codice_istat": "063060", "comune": "POZZUOLI", "sigla_provincia": "NA", "regione": "Campania", "n_contribuenti": 42443, "reddito_mediana": 18286.0, "reddito_p10": 3265.0, "reddito_p90": 49474.0, "ratio_p90_p10": 15.15, "pct_sotto_15k": 42.77, "pct_sopra_55k": 4.58, "prezzo_acq_eur_mq_med": 1525.0, "affitto_eur_mq_mese_med": 5.1, "rs_single_affitto": 12712.0, "rs_coppia_affitto": 21344.0, "rs_coppia_2f_affitto": 27113.0, "residuo_single_affitto": 5012.0, "residuo_coppia_2f_affitto": -6285.0, "indice_qualita": 29.1}, {"codice_istat": "100005", "comune": "PRATO", "sigla_provincia": "PO", "regione": "Toscana", "n_contribuenti": 156393, "reddito_mediana": 20246.0, "reddito_p10": 4212.0, "reddito_p90": 50597.0, "ratio_p90_p10": 12.01, "pct_sotto_15k": 35.68, "pct_sopra_55k": 5.65, "prezzo_acq_eur_mq_med": 1575.0, "affitto_eur_mq_mese_med": 7.5, "rs_single_affitto": 14638.0, "rs_coppia_affitto": 24197.0, "rs_coppia_2f_affitto": 29764.0, "residuo_single_affitto": 4858.0, "residuo_coppia_2f_affitto": -6042.0, "indice_qualita": 26.0}, {"codice_istat": "092051", "comune": "QUARTU SANT'ELENA", "sigla_provincia": "CA", "regione": "Sardegna", "n_contribuenti": 46850, "reddito_mediana": 20387.0, "reddito_p10": 4050.0, "reddito_p90": 50168.0, "ratio_p90_p10": 12.39, "pct_sotto_15k": 36.25, "pct_sopra_55k": 4.87, "prezzo_acq_eur_mq_med": 1675.0, "affitto_eur_mq_mese_med": 6.5, "rs_single_affitto": 13836.0, "rs_coppia_affitto": 23008.0, "rs_coppia_2f_affitto": 28659.0, "residuo_single_affitto": 5550.0, "residuo_coppia_2f_affitto": -5352.0, "indice_qualita": 30.9}, {"codice_istat": "088009", "comune": "RAGUSA", "sigla_provincia": "RG", "regione": "Sicilia", "n_contribuenti": 52825, "reddito_mediana": 17273.0, "reddito_p10": 3262.0, "reddito_p90": 48059.0, "ratio_p90_p10": 14.73, "pct_sotto_15k": 44.72, "pct_sopra_55k": 3.79, "prezzo_acq_eur_mq_med": 730.0, "affitto_eur_mq_mese_med": 3.92, "rs_single_affitto": 11765.0, "rs_coppia_affitto": 19941.0, "rs_coppia_2f_affitto": 25809.0, "residuo_single_affitto": 5055.0, "residuo_coppia_2f_affitto": -6420.0, "indice_qualita": 51.8}, {"codice_istat": "039014", "comune": "RAVENNA", "sigla_provincia": "RA", "regione": "Emilia-Romagna", "n_contribuenti": 126595, "reddito_mediana": 23425.0, "reddito_p10": 5512.0, "reddito_p90": 52167.0, "ratio_p90_p10": 9.46, "pct_sotto_15k": 27.77, "pct_sopra_55k": 6.41, "prezzo_acq_eur_mq_med": 1625.0, "affitto_eur_mq_mese_med": 6.25, "rs_single_affitto": 13635.0, "rs_coppia_affitto": 22711.0, "rs_coppia_2f_affitto": 28383.0, "residuo_single_affitto": 7694.0, "residuo_coppia_2f_affitto": -3209.0, "indice_qualita": 56.4}, {"codice_istat": "035033", "comune": "REGGIO NELL'EMILIA", "sigla_provincia": "RE", "regione": "Emilia-Romagna", "n_contribuenti": 130256, "reddito_mediana": 24440.0, "reddito_p10": 5584.0, "reddito_p90": 53506.0, "ratio_p90_p10": 9.58, "pct_sotto_15k": 26.66, "pct_sopra_55k": 8.04, "prezzo_acq_eur_mq_med": 1200.0, "affitto_eur_mq_mese_med": 4.95, "rs_single_affitto": 12592.0, "rs_coppia_affitto": 21165.0, "rs_coppia_2f_affitto": 26947.0, "residuo_single_affitto": 9140.0, "residuo_coppia_2f_affitto": -1645.0, "indice_qualita": 84.5}, {"codice_istat": "080063", "comune": "REGGIO DI CALABRIA", "sigla_provincia": "RC", "regione": "Calabria", "n_contribuenti": 106580, "reddito_mediana": 20605.0, "reddito_p10": 3852.0, "reddito_p90": 50583.0, "ratio_p90_p10": 13.13, "pct_sotto_15k": 37.31, "pct_sopra_55k": 5.01, "prezzo_acq_eur_mq_med": 712.5, "affitto_eur_mq_mese_med": 3.03, "rs_single_affitto": 11051.0, "rs_coppia_affitto": 18883.0, "rs_coppia_2f_affitto": 24826.0, "residuo_single_affitto": 7775.0, "residuo_coppia_2f_affitto": -2770.0, "indice_qualita": 82.8}, {"codice_istat": "015182", "comune": "RHO", "sigla_provincia": "MI", "regione": "Lombardia", "n_contribuenti": 39448, "reddito_mediana": 25254.0, "reddito_p10": 5933.0, "reddito_p90": 53038.0, "ratio_p90_p10": 8.94, "pct_sotto_15k": 25.48, "pct_sopra_55k": 7.23, "prezzo_acq_eur_mq_med": 1775.0, "affitto_eur_mq_mese_med": 8.28, "rs_single_affitto": 15000.0, "rs_coppia_affitto": 25124.0, "rs_coppia_2f_affitto": 30625.0, "residuo_single_affitto": 7873.0, "residuo_coppia_2f_affitto": -3222.0, "indice_qualita": 52.0}, {"codice_istat": "099014", "comune": "RIMINI", "sigla_provincia": "RN", "regione": "Emilia-Romagna", "n_contribuenti": 121512, "reddito_mediana": 20097.0, "reddito_p10": 3964.0, "reddito_p90": 51053.0, "ratio_p90_p10": 12.88, "pct_sotto_15k": 36.9, "pct_sopra_55k": 6.09, "prezzo_acq_eur_mq_med": 1975.0, "affitto_eur_mq_mese_med": 7.5, "rs_single_affitto": 14638.0, "rs_coppia_affitto": 24197.0, "rs_coppia_2f_affitto": 29764.0, "residuo_single_affitto": 4760.0, "residuo_coppia_2f_affitto": -6140.0, "indice_qualita": 13.7}, {"codice_istat": "001219", "comune": "RIVOLI", "sigla_provincia": "TO", "regione": "Piemonte", "n_contribuenti": 36520, "reddito_mediana": 24991.0, "reddito_p10": 6110.0, "reddito_p90": 53734.0, "ratio_p90_p10": 8.79, "pct_sotto_15k": 25.12, "pct_sopra_55k": 8.29, "prezzo_acq_eur_mq_med": 1487.5, "affitto_eur_mq_mese_med": 6.53, "rs_single_affitto": 13860.0, "rs_coppia_affitto": 23044.0, "rs_coppia_2f_affitto": 28692.0, "residuo_single_affitto": 8553.0, "residuo_coppia_2f_affitto": -2349.0, "indice_qualita": 69.9}, {"codice_istat": "058091", "comune": "ROMA", "sigla_provincia": "RM", "regione": "Lazio", "n_contribuenti": 1994045, "reddito_mediana": 24111.0, "reddito_p10": 4378.0, "reddito_p90": 64331.0, "ratio_p90_p10": 14.69, "pct_sotto_15k": 32.37, "pct_sopra_55k": 12.5, "prezzo_acq_eur_mq_med": 2500.0, "affitto_eur_mq_mese_med": 11.05, "rs_single_affitto": 16089.0, "rs_coppia_affitto": 28505.0, "rs_coppia_2f_affitto": 33685.0, "residuo_single_affitto": 5264.0, "residuo_coppia_2f_affitto": -5627.0, "indice_qualita": 14.9}, {"codice_istat": "029041", "comune": "ROVIGO", "sigla_provincia": "RO", "regione": "Veneto", "n_contribuenti": 39969, "reddito_mediana": 23506.0, "reddito_p10": 5350.0, "reddito_p90": 51618.0, "ratio_p90_p10": 9.65, "pct_sotto_15k": 28.05, "pct_sopra_55k": 5.57, "prezzo_acq_eur_mq_med": 900.0, "affitto_eur_mq_mese_med": 6.75, "rs_single_affitto": 14036.0, "rs_coppia_affitto": 23305.0, "rs_coppia_2f_affitto": 28935.0, "residuo_single_affitto": 7447.0, "residuo_coppia_2f_affitto": -3455.0, "indice_qualita": 73.9}, {"codice_istat": "065116", "comune": "SALERNO", "sigla_provincia": "SA", "regione": "Campania", "n_contribuenti": 87008, "reddito_mediana": 22191.0, "reddito_p10": 3858.0, "reddito_p90": 54163.0, "ratio_p90_p10": 14.04, "pct_sotto_15k": 36.08, "pct_sopra_55k": 9.03, "prezzo_acq_eur_mq_med": 1687.5, "affitto_eur_mq_mese_med": 4.22, "rs_single_affitto": 12006.0, "rs_coppia_affitto": 20298.0, "rs_coppia_2f_affitto": 26141.0, "residuo_single_affitto": 8102.0, "residuo_coppia_2f_affitto": -2592.0, "indice_qualita": 59.2}, {"codice_istat": "044066", "comune": "SAN BENEDETTO DEL TRONTO", "sigla_provincia": "AP", "regione": "Marche", "n_contribuenti": 36305, "reddito_mediana": 20424.0, "reddito_p10": 4086.0, "reddito_p90": 51524.0, "ratio_p90_p10": 12.61, "pct_sotto_15k": 36.32, "pct_sopra_55k": 6.47, "prezzo_acq_eur_mq_med": 1700.0, "affitto_eur_mq_mese_med": 7.12, "rs_single_affitto": 14333.0, "rs_coppia_affitto": 23745.0, "rs_coppia_2f_affitto": 29344.0, "residuo_single_affitto": 5203.0, "residuo_coppia_2f_affitto": -5698.0, "indice_qualita": 26.4}, {"codice_istat": "008055", "comune": "SANREMO", "sigla_provincia": "IM", "regione": "Liguria", "n_contribuenti": 40057, "reddito_mediana": 18741.0, "reddito_p10": 3716.0, "reddito_p90": 49185.0, "ratio_p90_p10": 13.24, "pct_sotto_15k": 40.19, "pct_sopra_55k": 4.74, "prezzo_acq_eur_mq_med": 2012.5, "affitto_eur_mq_mese_med": 5.97, "rs_single_affitto": 13410.0, "rs_coppia_affitto": 22378.0, "rs_coppia_2f_affitto": 28074.0, "residuo_single_affitto": 4789.0, "residuo_coppia_2f_affitto": -6463.0, "indice_qualita": 13.0}, {"codice_istat": "090064", "comune": "SASSARI", "sigla_provincia": "SS", "regione": "Sardegna", "n_contribuenti": 85699, "reddito_mediana": 20677.0, "reddito_p10": 4015.0, "reddito_p90": 51277.0, "ratio_p90_p10": 12.77, "pct_sotto_15k": 35.99, "pct_sopra_55k": 6.04, "prezzo_acq_eur_mq_med": 1080.0, "affitto_eur_mq_mese_med": 5.3, "rs_single_affitto": 12873.0, "rs_coppia_affitto": 21581.0, "rs_coppia_2f_affitto": 27334.0, "residuo_single_affitto": 6460.0, "residuo_coppia_2f_affitto": -4368.0, "indice_qualita": 57.8}, {"codice_istat": "009056", "comune": "SAVONA", "sigla_provincia": "SV", "regione": "Liguria", "n_contribuenti": 45646, "reddito_mediana": 23158.0, "reddito_p10": 4950.0, "reddito_p90": 52714.0, "ratio_p90_p10": 10.65, "pct_sotto_15k": 30.0, "pct_sopra_55k": 7.17, "prezzo_acq_eur_mq_med": 1500.0, "affitto_eur_mq_mese_med": 5.97, "rs_single_affitto": 13410.0, "rs_coppia_affitto": 22378.0, "rs_coppia_2f_affitto": 28074.0, "residuo_single_affitto": 7687.0, "residuo_coppia_2f_affitto": -3217.0, "indice_qualita": 59.8}, {"codice_istat": "042045", "comune": "SENIGALLIA", "sigla_provincia": "AN", "regione": "Marche", "n_contribuenti": 35452, "reddito_mediana": 22035.0, "reddito_p10": 4651.0, "reddito_p90": 52387.0, "ratio_p90_p10": 11.26, "pct_sotto_15k": 31.86, "pct_sopra_55k": 7.05, "prezzo_acq_eur_mq_med": 1475.0, "affitto_eur_mq_mese_med": 4.75, "rs_single_affitto": 12431.0, "rs_coppia_affitto": 20928.0, "rs_coppia_2f_affitto": 26726.0, "residuo_single_affitto": 7682.0, "residuo_coppia_2f_affitto": -3078.0, "indice_qualita": 60.4}, {"codice_istat": "015209", "comune": "SESTO SAN GIOVANNI", "sigla_provincia": "MI", "regione": "Lombardia", "n_contribuenti": 61076, "reddito_mediana": 24804.0, "reddito_p10": 5627.0, "reddito_p90": 53629.0, "ratio_p90_p10": 9.53, "pct_sotto_15k": 26.79, "pct_sopra_55k": 8.15, "prezzo_acq_eur_mq_med": 2050.0, "affitto_eur_mq_mese_med": 8.28, "rs_single_affitto": 15000.0, "rs_coppia_affitto": 25124.0, "rs_coppia_2f_affitto": 30625.0, "residuo_single_affitto": 7578.0, "residuo_coppia_2f_affitto": -3517.0, "indice_qualita": 41.0}, {"codice_istat": "001265", "comune": "SETTIMO TORINESE", "sigla_provincia": "TO", "regione": "Piemonte", "n_contribuenti": 35063, "reddito_mediana": 23268.0, "reddito_p10": 5968.0, "reddito_p90": 50102.0, "ratio_p90_p10": 8.4, "pct_sotto_15k": 26.76, "pct_sopra_55k": 3.43, "prezzo_acq_eur_mq_med": 1125.0, "affitto_eur_mq_mese_med": 5.55, "rs_single_affitto": 13073.0, "rs_coppia_affitto": 21879.0, "rs_coppia_2f_affitto": 27610.0, "residuo_single_affitto": 8011.0, "residuo_coppia_2f_affitto": -2849.0, "indice_qualita": 73.9}, {"codice_istat": "052032", "comune": "SIENA", "sigla_provincia": "SI", "regione": "Toscana", "n_contribuenti": 42782, "reddito_mediana": 26249.0, "reddito_p10": 5730.0, "reddito_p90": 64457.0, "ratio_p90_p10": 11.25, "pct_sotto_15k": 25.53, "pct_sopra_55k": 12.76, "prezzo_acq_eur_mq_med": 1887.5, "affitto_eur_mq_mese_med": 6.3, "rs_single_affitto": 13675.0, "rs_coppia_affitto": 22770.0, "rs_coppia_2f_affitto": 28438.0, "residuo_single_affitto": 9517.0, "residuo_coppia_2f_affitto": -1386.0, "indice_qualita": 66.9}, {"codice_istat": "089017", "comune": "SIRACUSA", "sigla_provincia": "SR", "regione": "Sicilia", "n_contribuenti": 74087, "reddito_mediana": 19607.0, "reddito_p10": 3598.0, "reddito_p90": 50933.0, "ratio_p90_p10": 14.16, "pct_sotto_15k": 39.66, "pct_sopra_55k": 5.82, "prezzo_acq_eur_mq_med": 1005.0, "affitto_eur_mq_mese_med": 4.2, "rs_single_affitto": 11990.0, "rs_coppia_affitto": 20274.0, "rs_coppia_2f_affitto": 26118.0, "residuo_single_affitto": 6419.0, "residuo_coppia_2f_affitto": -4341.0, "indice_qualita": 59.4}, {"codice_istat": "073027", "comune": "TARANTO", "sigla_provincia": "TA", "regione": "Puglia", "n_contribuenti": 120303, "reddito_mediana": 20560.0, "reddito_p10": 3757.0, "reddito_p90": 50311.0, "ratio_p90_p10": 13.39, "pct_sotto_15k": 37.41, "pct_sopra_55k": 4.66, "prezzo_acq_eur_mq_med": 690.0, "affitto_eur_mq_mese_med": 4.62, "rs_single_affitto": 12327.0, "rs_coppia_affitto": 20773.0, "rs_coppia_2f_affitto": 26582.0, "residuo_single_affitto": 6792.0, "residuo_coppia_2f_affitto": -3951.0, "indice_qualita": 72.0}, {"codice_istat": "055032", "comune": "TERNI", "sigla_provincia": "TR", "regione": "Umbria", "n_contribuenti": 78486, "reddito_mediana": 22110.0, "reddito_p10": 4495.0, "reddito_p90": 51367.0, "ratio_p90_p10": 11.43, "pct_sotto_15k": 32.62, "pct_sopra_55k": 5.63, "prezzo_acq_eur_mq_med": 975.0, "affitto_eur_mq_mese_med": 4.75, "rs_single_affitto": 12431.0, "rs_coppia_affitto": 20928.0, "rs_coppia_2f_affitto": 26726.0, "residuo_single_affitto": 7731.0, "residuo_coppia_2f_affitto": -3029.0, "indice_qualita": 75.0}, {"codice_istat": "001272", "comune": "TORINO", "sigla_provincia": "TO", "regione": "Piemonte", "n_contribuenti": 643012, "reddito_mediana": 23681.0, "reddito_p10": 4815.0, "reddito_p90": 54504.0, "ratio_p90_p10": 11.32, "pct_sotto_15k": 30.08, "pct_sopra_55k": 9.4, "prezzo_acq_eur_mq_med": 1750.0, "affitto_eur_mq_mese_med": 7.2, "rs_single_affitto": 14397.0, "rs_coppia_affitto": 23840.0, "rs_coppia_2f_affitto": 29432.0, "residuo_single_affitto": 7292.0, "residuo_coppia_2f_affitto": -3609.0, "indice_qualita": 48.4}, {"codice_istat": "063084", "comune": "TORRE DEL GRECO", "sigla_provincia": "NA", "regione": "Campania", "n_contribuenti": 44544, "reddito_mediana": 18593.0, "reddito_p10": 3314.0, "reddito_p90": 48794.0, "ratio_p90_p10": 14.72, "pct_sotto_15k": 42.3, "pct_sopra_55k": 3.43, "prezzo_acq_eur_mq_med": 1450.0, "affitto_eur_mq_mese_med": 4.8, "rs_single_affitto": 12472.0, "rs_coppia_affitto": 20987.0, "rs_coppia_2f_affitto": 26781.0, "residuo_single_affitto": 5393.0, "residuo_coppia_2f_affitto": -5767.0, "indice_qualita": 35.5}, {"codice_istat": "110009", "comune": "TRANI", "sigla_provincia": "BT", "regione": "Puglia", "n_contribuenti": 35479, "reddito_mediana": 16607.0, "reddito_p10": 2961.0, "reddito_p90": 47416.0, "ratio_p90_p10": 16.01, "pct_sotto_15k": 46.19, "pct_sopra_55k": 3.72, "prezzo_acq_eur_mq_med": 1287.5, "affitto_eur_mq_mese_med": 4.53, "rs_single_affitto": 12255.0, "rs_coppia_affitto": 20666.0, "rs_coppia_2f_affitto": 26483.0, "residuo_single_affitto": 4252.0, "residuo_coppia_2f_affitto": -7514.0, "indice_qualita": 27.2}, {"codice_istat": "081021", "comune": "TRAPANI", "sigla_provincia": "TP", "regione": "Sicilia", "n_contribuenti": 35184, "reddito_mediana": 17865.0, "reddito_p10": 3199.0, "reddito_p90": 48439.0, "ratio_p90_p10": 15.14, "pct_sotto_15k": 43.62, "pct_sopra_55k": 3.6, "prezzo_acq_eur_mq_med": 807.5, "affitto_eur_mq_mese_med": 2.7, "rs_single_affitto": 10786.0, "rs_coppia_affitto": 18491.0, "rs_coppia_2f_affitto": 24461.0, "residuo_single_affitto": 6176.0, "residuo_coppia_2f_affitto": -4957.0, "indice_qualita": 62.2}, {"codice_istat": "022205", "comune": "TRENTO", "sigla_provincia": "TN", "regione": "Trentino-Alto Adige", "n_contribuenti": 94772, "reddito_mediana": 25227.0, "reddito_p10": 5424.0, "reddito_p90": 54659.0, "ratio_p90_p10": 10.08, "pct_sotto_15k": 26.8, "pct_sopra_55k": 9.54, "prezzo_acq_eur_mq_med": 2400.0, "affitto_eur_mq_mese_med": 7.5, "rs_single_affitto": 14638.0, "rs_coppia_affitto": 24197.0, "rs_coppia_2f_affitto": 29764.0, "residuo_single_affitto": 8126.0, "residuo_coppia_2f_affitto": -2774.0, "indice_qualita": 47.0}, {"codice_istat": "026086", "comune": "TREVISO", "sigla_provincia": "TV", "regione": "Veneto", "n_contribuenti": 66850, "reddito_mediana": 24372.0, "reddito_p10": 5008.0, "reddito_p90": 62137.0, "ratio_p90_p10": 12.41, "pct_sotto_15k": 28.78, "pct_sopra_55k": 11.63, "prezzo_acq_eur_mq_med": 1700.0, "affitto_eur_mq_mese_med": 7.7, "rs_single_affitto": 14799.0, "rs_coppia_affitto": 24434.0, "rs_coppia_2f_affitto": 29985.0, "residuo_single_affitto": 7445.0, "residuo_coppia_2f_affitto": -3454.0, "indice_qualita": 51.5}, {"codice_istat": "032006", "comune": "TRIESTE", "sigla_provincia": "TS", "regione": "Friuli-Venezia Giulia", "n_contribuenti": 160697, "reddito_mediana": 23850.0, "reddito_p10": 5024.0, "reddito_p90": 52394.0, "ratio_p90_p10": 10.43, "pct_sotto_15k": 29.3, "pct_sopra_55k": 6.55, "prezzo_acq_eur_mq_med": 1775.0, "affitto_eur_mq_mese_med": 6.78, "rs_single_affitto": 14060.0, "rs_coppia_affitto": 23341.0, "rs_coppia_2f_affitto": 28968.0, "residuo_single_affitto": 7655.0, "residuo_coppia_2f_affitto": -3247.0, "indice_qualita": 51.7}, {"codice_istat": "030129", "comune": "UDINE", "sigla_provincia": "UD", "regione": "Friuli-Venezia Giulia", "n_contribuenti": 78537, "reddito_mediana": 24132.0, "reddito_p10": 5021.0, "reddito_p90": 54755.0, "ratio_p90_p10": 10.91, "pct_sotto_15k": 28.74, "pct_sopra_55k": 9.7, "prezzo_acq_eur_mq_med": 1200.0, "affitto_eur_mq_mese_med": 5.45, "rs_single_affitto": 12993.0, "rs_coppia_affitto": 21760.0, "rs_coppia_2f_affitto": 27499.0, "residuo_single_affitto": 8638.0, "residuo_coppia_2f_affitto": -2209.0, "indice_qualita": 78.8}, {"codice_istat": "012133", "comune": "VARESE", "sigla_provincia": "VA", "regione": "Lombardia", "n_contribuenti": 59057, "reddito_mediana": 23456.0, "reddito_p10": 4714.0, "reddito_p90": 56289.0, "ratio_p90_p10": 11.94, "pct_sotto_15k": 30.34, "pct_sopra_55k": 10.27, "prezzo_acq_eur_mq_med": 1187.5, "affitto_eur_mq_mese_med": 5.6, "rs_single_affitto": 13114.0, "rs_coppia_affitto": 21938.0, "rs_coppia_2f_affitto": 27665.0, "residuo_single_affitto": 8104.0, "residuo_coppia_2f_affitto": -2762.0, "indice_qualita": 73.2}, {"codice_istat": "058111", "comune": "VELLETRI", "sigla_provincia": "RM", "regione": "Lazio", "n_contribuenti": 34920, "reddito_mediana": 19235.0, "reddito_p10": 3755.0, "reddito_p90": 49019.0, "ratio_p90_p10": 13.05, "pct_sotto_15k": 39.46, "pct_sopra_55k": 3.98, "prezzo_acq_eur_mq_med": 1012.5, "affitto_eur_mq_mese_med": 4.58, "rs_single_affitto": 12295.0, "rs_coppia_affitto": 20726.0, "rs_coppia_2f_affitto": 26538.0, "residuo_single_affitto": 5946.0, "residuo_coppia_2f_affitto": -4980.0, "indice_qualita": 53.9}, {"codice_istat": "027042", "comune": "VENEZIA", "sigla_provincia": "VE", "regione": "Veneto", "n_contribuenti": 200207, "reddito_mediana": 22890.0, "reddito_p10": 5106.0, "reddito_p90": 53304.0, "ratio_p90_p10": 10.44, "pct_sotto_15k": 29.57, "pct_sopra_55k": 8.02, "prezzo_acq_eur_mq_med": 1900.0, "affitto_eur_mq_mese_med": 10.62, "rs_single_affitto": 15696.0, "rs_coppia_affitto": 27906.0, "rs_coppia_2f_affitto": 33210.0, "residuo_single_affitto": 4720.0, "residuo_coppia_2f_affitto": -6171.0, "indice_qualita": 15.4}, {"codice_istat": "002158", "comune": "VERCELLI", "sigla_provincia": "VC", "regione": "Piemonte", "n_contribuenti": 34874, "reddito_mediana": 23319.0, "reddito_p10": 5299.0, "reddito_p90": 51513.0, "ratio_p90_p10": 9.72, "pct_sotto_15k": 27.92, "pct_sopra_55k": 5.5, "prezzo_acq_eur_mq_med": 701.25, "affitto_eur_mq_mese_med": 3.7, "rs_single_affitto": 11589.0, "rs_coppia_affitto": 19679.0, "rs_coppia_2f_affitto": 25566.0, "residuo_single_affitto": 9154.0, "residuo_coppia_2f_affitto": -1474.0, "indice_qualita": 98.5}, {"codice_istat": "023091", "comune": "VERONA", "sigla_provincia": "VR", "regione": "Veneto", "n_contribuenti": 203073, "reddito_mediana": 23658.0, "reddito_p10": 4996.0, "reddito_p90": 54708.0, "ratio_p90_p10": 10.95, "pct_sotto_15k": 29.47, "pct_sopra_55k": 9.65, "prezzo_acq_eur_mq_med": 1800.0, "affitto_eur_mq_mese_med": 8.25, "rs_single_affitto": 15000.0, "rs_coppia_affitto": 25088.0, "rs_coppia_2f_affitto": 30592.0, "residuo_single_affitto": 6826.0, "residuo_coppia_2f_affitto": -4251.0, "indice_qualita": 39.7}, {"codice_istat": "046033", "comune": "VIAREGGIO", "sigla_provincia": "LU", "regione": "Toscana", "n_contribuenti": 46507, "reddito_mediana": 21201.0, "reddito_p10": 4397.0, "reddito_p90": 52877.0, "ratio_p90_p10": 12.03, "pct_sotto_15k": 34.64, "pct_sopra_55k": 7.78, "prezzo_acq_eur_mq_med": 1887.5, "affitto_eur_mq_mese_med": 6.25, "rs_single_affitto": 13635.0, "rs_coppia_affitto": 22711.0, "rs_coppia_2f_affitto": 28383.0, "residuo_single_affitto": 6234.0, "residuo_coppia_2f_affitto": -4668.0, "indice_qualita": 32.7}, {"codice_istat": "024116", "comune": "VICENZA", "sigla_provincia": "VI", "regione": "Veneto", "n_contribuenti": 86122, "reddito_mediana": 23463.0, "reddito_p10": 5026.0, "reddito_p90": 53977.0, "ratio_p90_p10": 10.74, "pct_sotto_15k": 29.04, "pct_sopra_55k": 8.77, "prezzo_acq_eur_mq_med": 1085.0, "affitto_eur_mq_mese_med": 7.05, "rs_single_affitto": 14277.0, "rs_coppia_affitto": 23662.0, "rs_coppia_2f_affitto": 29267.0, "residuo_single_affitto": 7239.0, "residuo_coppia_2f_affitto": -3662.0, "indice_qualita": 66.4}, {"codice_istat": "018177", "comune": "VIGEVANO", "sigla_provincia": "PV", "regione": "Lombardia", "n_contribuenti": 45982, "reddito_mediana": 21641.0, "reddito_p10": 4992.0, "reddito_p90": 50701.0, "ratio_p90_p10": 10.16, "pct_sotto_15k": 30.65, "pct_sopra_55k": 5.25, "prezzo_acq_eur_mq_med": 870.0, "affitto_eur_mq_mese_med": 5.22, "rs_single_affitto": 12809.0, "rs_coppia_affitto": 21486.0, "rs_coppia_2f_affitto": 27245.0, "residuo_single_affitto": 7141.0, "residuo_coppia_2f_affitto": -3677.0, "indice_qualita": 71.3}, {"codice_istat": "056059", "comune": "VITERBO", "sigla_provincia": "VT", "regione": "Lazio", "n_contribuenti": 48622, "reddito_mediana": 20892.0, "reddito_p10": 4088.0, "reddito_p90": 51179.0, "ratio_p90_p10": 12.52, "pct_sotto_15k": 35.95, "pct_sopra_55k": 5.78, "prezzo_acq_eur_mq_med": 937.5, "affitto_eur_mq_mese_med": 4.2, "rs_single_affitto": 11990.0, "rs_coppia_affitto": 20274.0, "rs_coppia_2f_affitto": 26118.0, "residuo_single_affitto": 7262.0, "residuo_coppia_2f_affitto": -3429.0, "indice_qualita": 70.8}, {"codice_istat": "088012", "comune": "VITTORIA", "sigla_provincia": "RG", "regione": "Sicilia", "n_contribuenti": 40264, "reddito_mediana": 11446.0, "reddito_p10": 2273.0, "reddito_p90": 35476.0, "ratio_p90_p10": 15.61, "pct_sotto_15k": 64.78, "pct_sopra_55k": 1.71, "prezzo_acq_eur_mq_med": 705.0, "affitto_eur_mq_mese_med": 3.55, "rs_single_affitto": 11469.0, "rs_coppia_affitto": 19501.0, "rs_coppia_2f_affitto": 25400.0, "residuo_single_affitto": -17.0, "residuo_coppia_2f_affitto": -11849.0, "indice_qualita": 40.0}, {"codice_istat": "079160", "comune": "LAMEZIA TERME", "sigla_provincia": "CZ", "regione": "Calabria", "n_contribuenti": 41846, "reddito_mediana": 16357.0, "reddito_p10": 3077.0, "reddito_p90": 46919.0, "ratio_p90_p10": 15.25, "pct_sotto_15k": 46.88, "pct_sopra_55k": 3.12, "prezzo_acq_eur_mq_med": 632.5, "affitto_eur_mq_mese_med": 3.25, "rs_single_affitto": 11228.0, "rs_coppia_affitto": 19145.0, "rs_coppia_2f_affitto": 25069.0, "residuo_single_affitto": 4856.0, "residuo_coppia_2f_affitto": -6830.0, "indice_qualita": 50.3}, {"codice_istat": "058120", "comune": "FIUMICINO", "sigla_provincia": "RM", "regione": "Lazio", "n_contribuenti": 56808, "reddito_mediana": 20837.0, "reddito_p10": 4323.0, "reddito_p90": 50809.0, "ratio_p90_p10": 11.75, "pct_sotto_15k": 35.34, "pct_sopra_55k": 5.43, "prezzo_acq_eur_mq_med": 2175.0, "affitto_eur_mq_mese_med": 8.57, "rs_single_affitto": 15000.0, "rs_coppia_affitto": 25469.0, "rs_coppia_2f_affitto": 30946.0, "residuo_single_affitto": 4975.0, "residuo_coppia_2f_affitto": -6294.0, "indice_qualita": 7.5}, {"codice_istat": "078157", "comune": "CORIGLIANO-ROSSANO", "sigla_provincia": "CS", "regione": "Calabria", "n_contribuenti": 49729, "reddito_mediana": 12507.0, "reddito_p10": 2478.0, "reddito_p90": 41365.0, "ratio_p90_p10": 16.69, "pct_sotto_15k": 59.6, "pct_sopra_55k": 2.27, "prezzo_acq_eur_mq_med": 835.0, "affitto_eur_mq_mese_med": 3.1, "rs_single_affitto": 11107.0, "rs_coppia_affitto": 18966.0, "rs_coppia_2f_affitto": 24903.0, "residuo_single_affitto": 1047.0, "residuo_coppia_2f_affitto": -10485.0, "indice_qualita": 36.4}]};
-const CENTROIDI = {"001156": [44.97145, 7.70521], "001219": [45.06214, 7.52144], "001265": [45.14538, 7.77505], "001272": [45.07169, 7.67475], "002158": [45.31927, 8.41832], "003106": [45.43154, 8.61314], "004078": [44.41373, 7.54626], "005005": [44.91458, 8.21029], "006003": [44.91115, 8.62441], "008055": [43.83577, 7.77507], "009056": [44.32589, 8.44435], "010025": [44.44907, 8.85474], "011015": [44.10909, 9.83004], "012026": [45.60736, 8.846], "012070": [45.66403, 8.79431], "012133": [45.83241, 8.81226], "013075": [45.80496, 9.08099], "015077": [45.55967, 9.21826], "015081": [45.53309, 9.27134], "015118": [45.59238, 8.90328], "015146": [45.4608, 9.15927], "015166": [45.57064, 9.16614], "015182": [45.52609, 9.05042], "015209": [45.53434, 9.25368], "016024": [45.69638, 9.66395], "017029": [45.53173, 10.21902], "018110": [45.18649, 9.17108], "018177": [45.30595, 8.87781], "019036": [45.1362, 10.03747], "021008": [46.49015, 11.36748], "022205": [46.04636, 11.1016], "023091": [45.44193, 11.01023], "024116": [45.55729, 11.55842], "026086": [45.66508, 12.23255], "027008": [45.19837, 12.24084], "027042": [45.46924, 12.33255], "028060": [45.4048, 11.88675], "029041": [45.07611, 11.79123], "030129": [46.06046, 13.25058], "032006": [45.64881, 13.76328], "033032": [45.05323, 9.73521], "034027": [44.7923, 10.33495], "035033": [44.69452, 10.61158], "036005": [44.79259, 10.9103], "036023": [44.65013, 10.90279], "037006": [44.5018, 11.32021], "037032": [44.39068, 11.70711], "038008": [44.81373, 11.6811], "039010": [44.29585, 11.89027], "039014": [44.39236, 12.16918], "040007": [44.09777, 12.2183], "040012": [44.21516, 12.0518], "041013": [43.80832, 12.98056], "041044": [43.86079, 12.83312], "042002": [43.58371, 13.48066], "042045": [43.66168, 13.19925], "044007": [42.85085, 13.57198], "044066": [42.92933, 13.87349], "045003": [44.09232, 10.1028], "045010": [44.05616, 10.16457], "046007": [43.84718, 10.56819], "046017": [43.85544, 10.47145], "046033": [43.86261, 10.26254], "047014": [43.99754, 10.90244], "048006": [43.81739, 11.12971], "048017": [43.77904, 11.24948], "049009": [43.50927, 10.28142], "050026": [43.68512, 10.34764], "051002": [43.4497, 11.91689], "052032": [43.29534, 11.31439], "053011": [42.73684, 11.04597], "054018": [42.98299, 12.80471], "054039": [43.11725, 12.34883], "055032": [42.58519, 12.65599], "056059": [42.46104, 12.07479], "058007": [41.49402, 12.61344], "058047": [41.98053, 12.70096], "058079": [41.67169, 12.52555], "058091": [41.89314, 12.50657], "058111": [41.64976, 12.76473], "058120": [41.85853, 12.24795], "059001": [41.59174, 12.66359], "059011": [41.47008, 12.84613], "061022": [41.10064, 14.33516], "063023": [40.89574, 14.31214], "063034": [40.92888, 14.10923], "063049": [40.84047, 14.22512], "063060": [40.85016, 14.10347], "063084": [40.78551, 14.39359], "064008": [40.91534, 14.79459], "065116": [40.67996, 14.79564], "066049": [42.3839, 13.41345], "068028": [42.45872, 14.21169], "069022": [42.35135, 14.14512], "070006": [41.56596, 14.65388], "071020": [41.25709, 15.83695], "071024": [41.4573, 15.60279], "071029": [41.5302, 15.80163], "072004": [40.84637, 16.54038], "072006": [41.10469, 16.84598], "072029": [41.1837, 16.57094], "072030": [40.88925, 17.27941], "073027": [40.4592, 17.31745], "074001": [40.62551, 17.9211], "075035": [40.40736, 18.16041], "076063": [40.65884, 15.80284], "077014": [40.67388, 16.5747], "078045": [39.27794, 16.27289], "078157": [39.61796, 16.51858], "079023": [38.89192, 16.59953], "079160": [38.95915, 16.28414], "080063": [38.10481, 15.71755], "081011": [37.84267, 12.51446], "081021": [37.94648, 12.62283], "082053": [38.13003, 13.32678], "083048": [38.19346, 15.51626], "084001": [37.31596, 13.58544], "085007": [37.10553, 14.29455], "087015": [37.47467, 15.03632], "088006": [36.88398, 14.83879], "088009": [36.91779, 14.67506], "088012": [36.95325, 14.49961], "089017": [37.03174, 15.23028], "090047": [40.91809, 9.57019], "090064": [40.75033, 8.37708], "092009": [39.22751, 9.08583], "092051": [39.21647, 9.29488], "093033": [45.93874, 12.64998], "098031": [45.315, 9.49017], "099014": [44.03194, 12.51888], "100005": [43.8842, 11.10168], "108028": [45.62155, 9.24227], "108033": [45.59085, 9.2808], "110001": [41.14746, 16.24367], "110002": [41.29105, 16.21025], "110003": [41.21437, 16.4846], "110009": [41.22837, 16.39984]};
-const PROFILI = PAYLOAD.meta.profili;
-const PANIERE = PAYLOAD.meta.paniere_non_casa;
-const COMUNI = PAYLOAD.comuni;
+(function() {
+  const PAYLOAD_URL = <?php echo wp_json_encode($payload_url); ?>;
+  const PALETTE = { orange: "#F17820", blue: "#00355F", green: "#1b7f3a", red: "#c0392b", neutral: "#475569" };
 
-// IRPEF 2025 — clientside per il calcolatore
-const SCAGLIONI = [[28000, 0.23], [50000, 0.35], [Infinity, 0.43]];
-const ADD_REG = 0.0173, ADD_COM = 0.005, DETR_BASE = 1955, DETR_FIG = 950;
-function irpefLorda(r) {
-  let imp = 0, prev = 0;
-  for (const [s, a] of SCAGLIONI) { if (r <= prev) break; const cap = Math.min(r, s); imp += (cap - prev) * a; prev = cap; }
-  return imp;
-}
-function detrazioneDip(r) {
-  if (r <= 15000) return DETR_BASE;
-  if (r <= 28000) return 1910 + 1190 * (28000 - r) / 13000;
-  if (r <= 50000) return 1910 * (50000 - r) / 22000;
-  return 0;
-}
-function nettoDaLordo(lordo, nFigli) {
-  const ip = Math.max(0, irpefLorda(lordo) - detrazioneDip(lordo) - nFigli * DETR_FIG);
-  const add = lordo * (ADD_REG + ADD_COM);
-  return lordo - ip - add;
-}
-// Regime forfettario: imposta sostitutiva (15% std, 5% startup), no detrazioni, no addizionali.
-// Soglia max ricavi forfettario: 85.000 €/anno.
-const FLAT_LIMIT = 85000;
-function nettoFlatTax(lordo, aliquota) {
-  if (lordo > FLAT_LIMIT) return null;
-  return lordo * (1 - aliquota);
-}
-function lordoPerNetto(nettoTarget, nFigli, nPercettori) {
-  if (nettoTarget <= 0) return 0;
-  let lo = 0, hi = 250000;
-  const nettoP = nettoTarget / nPercettori;
-  for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (nettoDaLordo(m, nFigli) < nettoP) lo = m; else hi = m; }
-  return ((lo + hi) / 2) * nPercettori;
-}
-function costoCasaAnnuo(prof, modalita, affitto, prezzoAcq) {
-  if (modalita === "affitto") return affitto ? prof.mq * affitto * 12 : null;
-  if (modalita === "mutuo") return prezzoAcq ? prof.mq * prezzoAcq * 0.059 : null;
-  if (modalita === "proprieta") return 1500;
-  return null;
-}
-function fmt(n) { if (n == null || isNaN(n)) return "—"; return Math.round(n).toLocaleString("it-IT") + " €"; }
-function fmtN(n, dec=2) { if (n == null || isNaN(n)) return "—"; return n.toFixed(dec); }
+  // IRPEF 2025 + flat tax (clientside)
+  const SCAGLIONI = [[28000, 0.23], [50000, 0.35], [Infinity, 0.43]];
+  const ADD_REG = 0.0173, ADD_COM = 0.005, DETR_BASE = 1955, DETR_FIG = 950;
+  const FLAT_LIMIT = 85000;
+  function irpefLorda(r) { let imp=0,prev=0; for(const[s,a] of SCAGLIONI){ if(r<=prev)break; const cap=Math.min(r,s); imp+=(cap-prev)*a; prev=cap; } return imp; }
+  function detrazioneDip(r) { if(r<=15000)return DETR_BASE; if(r<=28000)return 1910+1190*(28000-r)/13000; if(r<=50000)return 1910*(50000-r)/22000; return 0; }
+  function nettoDaLordo(lordo,nFigli) { const ip=Math.max(0,irpefLorda(lordo)-detrazioneDip(lordo)-nFigli*DETR_FIG); const add=lordo*(ADD_REG+ADD_COM); return lordo-ip-add; }
+  function nettoFlatTax(lordo,al) { if(lordo>FLAT_LIMIT)return null; return lordo*(1-al); }
+  function lordoPerNetto(target,nFigli,nP) { if(target<=0)return 0; let lo=0,hi=250000; const tp=target/nP; for(let i=0;i<40;i++){ const m=(lo+hi)/2; if(nettoDaLordo(m,nFigli)<tp)lo=m; else hi=m; } return((lo+hi)/2)*nP; }
+  function costoCasaAnnuo(p,m,af,ac) { if(m==="affitto")return af?p.mq*af*12:null; if(m==="proprieta")return 1500; return null; }
+  function fmt(n) { if(n==null||isNaN(n))return "—"; return Math.round(n).toLocaleString("it-IT")+" €"; }
+  function fmtN(n,d=2) { if(n==null||isNaN(n))return "—"; return n.toFixed(d); }
 
-// =====================  Setup regioni  =====================
-const regioni = [...new Set(COMUNI.map(c => c.regione).filter(Boolean))].sort();
-const regSel = document.getElementById("regione");
-for (const r of regioni) { const o = document.createElement("option"); o.value = r; o.text = r; regSel.appendChild(o); }
+  let DATA = null;
 
-// =====================  Comuni dropdown  =====================
-const comuneSel = document.getElementById("calc-comune");
-COMUNI.sort((a, b) => a.comune.localeCompare(b.comune)).forEach(c => {
-  const o = document.createElement("option");
-  o.value = c.codice_istat;
-  o.text = c.comune + " (" + c.sigla_provincia + ")";
-  comuneSel.appendChild(o);
-});
+  function init(payload) {
+    DATA = payload;
+    const COMUNI = payload.comuni || [];
+    const CENTROIDI = payload.centroidi || {};
+    const PROFILI = payload.meta.profili;
+    const PANIERE = payload.meta.paniere_non_casa;
 
-// =====================  Mappa  =====================
-function buildMap(filtro) {
-  const subset = COMUNI.filter(c => CENTROIDI[c.codice_istat] && (!filtro || c.regione === filtro));
-  const indic = document.getElementById("indicatore").value;
-  const z = subset.map(c => c[indic]);
-  const text = subset.map(c =>
-    `<b>${c.comune}</b> (${c.sigla_provincia})<br>` +
-    `Reddito mediano: ${fmt(c.reddito_mediana)}<br>` +
-    `Affitto: ${fmtN(c.affitto_eur_mq_mese_med)} €/mq mese<br>` +
-    `Prezzo acq: ${fmt(c.prezzo_acq_eur_mq_med)}/mq<br>` +
-    `Indice qualità: ${fmtN(c.indice_qualita, 1)}/100<br>` +
-    `<i>Click per dettaglio</i>`
-  );
-  const lats = subset.map(c => CENTROIDI[c.codice_istat][0]);
-  const lons = subset.map(c => CENTROIDI[c.codice_istat][1]);
-  const sizes = subset.map(c => Math.max(8, Math.min(40, Math.log10(c.n_contribuenti || 1000) * 6)));
+    // KPI
+    const kpiHtml = [
+      ['<?php lc_e("Comuni mappati"); ?>', COMUNI.length],
+      ['<?php lc_e("Mediana naz. (€)"); ?>', fmt(payload.meta.mediana_naz || null)],
+      ['<?php lc_e("Anno redditi"); ?>', payload.meta.anno_redditi || '—'],
+      ['<?php lc_e("Semestre OMI"); ?>', payload.meta.semestre_omi || '—'],
+    ].map(([k,v]) => `<div class="rounded-2xl bg-white/70 backdrop-blur border border-white/60 p-4 shadow-sm"><div class="text-xs uppercase tracking-wide text-slate-500">${k}</div><div class="mt-1 text-xl font-semibold text-slate-900">${v}</div></div>`).join("");
+    document.getElementById("qvi-kpi").innerHTML = kpiHtml;
 
-  const trace = {
-    type: "scattermapbox",
-    mode: "markers",
-    lat: lats,
-    lon: lons,
-    marker: {
-      size: sizes,
-      color: z,
-      colorscale: indic === "indice_qualita" || indic.startsWith("residuo") || indic === "reddito_mediana"
-                  ? "RdYlGn" : "RdYlGn_r",
-      showscale: true,
-      colorbar: { title: indic, thickness: 15 }
-    },
-    text: text,
-    hovertemplate: "%{text}<extra></extra>",
-    customdata: subset.map(c => c.codice_istat),
-  };
-  const layout = {
-    mapbox: { style: "open-street-map", center: { lat: 42.5, lon: 12.5 }, zoom: 5.2 },
-    margin: { t: 10, b: 10, l: 10, r: 10 },
-    height: 600,
-  };
-  Plotly.newPlot("map", [trace], layout, { displayModeBar: false }).then(gd => {
-    gd.on("plotly_click", e => mostraDettaglio(e.points[0].customdata));
+    // Regioni dropdown
+    const regioni = [...new Set(COMUNI.map(c=>c.regione).filter(Boolean))].sort();
+    const regSel = document.getElementById("qvi-regione");
+    for(const r of regioni) { const o=document.createElement("option"); o.value=r; o.text=r; regSel.appendChild(o); }
+
+    // Comuni dropdown calc
+    const comuneSel = document.getElementById("qvi-calc-comune");
+    [...COMUNI].sort((a,b)=>a.comune.localeCompare(b.comune)).forEach(c => {
+      const o=document.createElement("option"); o.value=c.codice_istat; o.text=c.comune+" ("+c.sigla_provincia+")"; comuneSel.appendChild(o);
+    });
+
+    function buildMap(filtro) {
+      const subset = COMUNI.filter(c => CENTROIDI[c.codice_istat] && (!filtro || c.regione===filtro));
+      const indic = document.getElementById("qvi-indicatore").value;
+      const z = subset.map(c => c[indic]);
+      const text = subset.map(c =>
+        `<b>${c.comune}</b> (${c.sigla_provincia})<br>` +
+        `Mediana: ${fmt(c.reddito_mediana)}<br>` +
+        `Affitto: ${fmtN(c.affitto_eur_mq_mese_med)} €/mq mese<br>` +
+        `Prezzo acq: ${fmt(c.prezzo_acq_eur_mq_med)}/mq<br>` +
+        `Indice: ${fmtN(c.indice_qualita,1)}/100`
+      );
+      const lats=subset.map(c=>CENTROIDI[c.codice_istat][0]);
+      const lons=subset.map(c=>CENTROIDI[c.codice_istat][1]);
+      const sizes=subset.map(c=>Math.max(8, Math.min(40, Math.log10(c.n_contribuenti||1000)*6)));
+      const trace = {
+        type:"scattermapbox", mode:"markers", lat:lats, lon:lons,
+        marker: { size:sizes, color:z, colorscale: indic==="indice_qualita"||indic.startsWith("residuo")||indic==="reddito_mediana" ? "RdYlGn" : "RdYlGn_r", showscale:true, colorbar:{title:indic, thickness:14, len:0.7} },
+        text:text, hovertemplate:"%{text}<extra></extra>",
+        customdata: subset.map(c=>c.codice_istat),
+      };
+      const layout = { mapbox:{style:"open-street-map", center:{lat:42.5, lon:12.5}, zoom:5.2}, margin:{t:10,b:10,l:10,r:10}, height:560, paper_bgcolor:"rgba(0,0,0,0)" };
+      Plotly.newPlot("qvi-map", [trace], layout, {displayModeBar:false, responsive:true}).then(gd => {
+        gd.on("plotly_click", e => mostraDettaglio(e.points[0].customdata));
+      });
+    }
+    buildMap("");
+    document.getElementById("qvi-indicatore").addEventListener("change", () => buildMap(regSel.value));
+    document.getElementById("qvi-regione").addEventListener("change", () => buildMap(regSel.value));
+
+    // Tabelle
+    const sortedDesc = [...COMUNI].filter(c=>c.indice_qualita!=null).sort((a,b)=>b.indice_qualita-a.indice_qualita);
+    function tabella(arr, sel) {
+      const tb = document.querySelector(sel+" tbody"); tb.innerHTML="";
+      arr.forEach((c,i) => {
+        const tr=document.createElement("tr"); tr.className="border-t border-slate-200 cursor-pointer hover:bg-slate-50";
+        tr.innerHTML = `<td class="px-2 py-1.5">${i+1}</td><td class="px-2 py-1.5">${c.comune}</td><td class="px-2 py-1.5">${c.sigla_provincia}</td>` +
+          `<td class="px-2 py-1.5 text-right font-medium">${fmtN(c.indice_qualita,1)}</td>` +
+          `<td class="px-2 py-1.5 text-right">${fmt(c.reddito_mediana)}</td>` +
+          `<td class="px-2 py-1.5 text-right">${fmtN(c.affitto_eur_mq_mese_med)}</td>`;
+        tr.addEventListener("click",()=>mostraDettaglio(c.codice_istat)); tb.appendChild(tr);
+      });
+    }
+    tabella(sortedDesc.slice(0,30), "#qvi-top");
+    tabella(sortedDesc.slice(-30).reverse(), "#qvi-bot");
+
+    // Calcolatore
+    function calcola() {
+      const cod=document.getElementById("qvi-calc-comune").value;
+      const profKey=document.getElementById("qvi-calc-profilo").value;
+      const modalita=document.getElementById("qvi-calc-modalita").value;
+      const c=COMUNI.find(x=>x.codice_istat===cod); const p=PROFILI[profKey];
+      if(!c||!p) { document.getElementById("qvi-calc-out").textContent="Seleziona un comune."; return; }
+      const paniere=PANIERE[profKey];
+      const casa=costoCasaAnnuo(p,modalita,c.affitto_eur_mq_mese_med,c.prezzo_acq_eur_mq_med);
+      if(casa==null) { document.getElementById("qvi-calc-out").innerHTML="<i>Dati casa non disponibili per "+c.comune+".</i>"; return; }
+      const spesa=paniere+casa;
+      const lordo=lordoPerNetto(spesa,p.figli,p.percettori);
+      const nettoMediana=nettoDaLordo(c.reddito_mediana||0,p.figli);
+      const residuo=nettoMediana-spesa;
+      const colorClass=residuo>0?"bg-emerald-100 text-emerald-900":"bg-rose-100 text-rose-900";
+      document.getElementById("qvi-calc-out").innerHTML =
+        `<div class="font-semibold">${c.comune} <span class="text-slate-500">(${c.sigla_provincia})</span> &middot; ${p.label} &middot; ${p.mq} mq &middot; ${modalita}</div>` +
+        `<div class="mt-3 grid sm:grid-cols-2 gap-2">` +
+        `<div>Spesa annua casa: <b>${fmt(casa)}</b></div>` +
+        `<div>Spesa altre voci (paniere): <b>${fmt(paniere)}</b></div>` +
+        `<div>Spesa totale annua: <b>${fmt(spesa)}</b></div>` +
+        `<div>Reddito lordo necessario: <b>${fmt(lordo)}</b></div>` +
+        `<div>Mediana lorda comunale: <b>${fmt(c.reddito_mediana)}</b></div>` +
+        `<div>Mediana netta stimata: <b>${fmt(nettoMediana)}</b></div>` +
+        `</div>` +
+        `<div class="mt-3 inline-block px-3 py-1.5 rounded-lg font-semibold ${colorClass}">Residuo annuo dalla mediana: ${fmt(residuo)}</div>`;
+      simulaReddito();
+    }
+    document.getElementById("qvi-calc-comune").addEventListener("change", calcola);
+    document.getElementById("qvi-calc-profilo").addEventListener("change", calcola);
+    document.getElementById("qvi-calc-modalita").addEventListener("change", calcola);
+
+    // Simulatore IRPEF/flat
+    function simulaReddito() {
+      const cod=document.getElementById("qvi-calc-comune").value;
+      const profKey=document.getElementById("qvi-calc-profilo").value;
+      const modalita=document.getElementById("qvi-calc-modalita").value;
+      const regime=document.getElementById("qvi-sim-regime").value;
+      const reddito=parseFloat(document.getElementById("qvi-sim-reddito").value)||0;
+      const c=COMUNI.find(x=>x.codice_istat===cod); const p=PROFILI[profKey];
+      if(!c||!p) { document.getElementById("qvi-sim-out").textContent="Seleziona un comune."; return; }
+      const paniere=PANIERE[profKey];
+      const casa=costoCasaAnnuo(p,modalita,c.affitto_eur_mq_mese_med,c.prezzo_acq_eur_mq_med);
+      const spesa=casa!=null?paniere+casa:null;
+      const nettoOrd=nettoDaLordo(reddito,p.figli);
+      const nettoF15=nettoFlatTax(reddito,0.15);
+      const nettoF05=nettoFlatTax(reddito,0.05);
+      const nettoSel=regime==="ordinario"?nettoOrd:regime==="flat15"?nettoF15:nettoF05;
+      const labelRegime=regime==="ordinario"?"IRPEF ordinario":regime==="flat15"?"Flat tax 15%":"Flat tax 5% (startup)";
+      let avviso=""; if(regime!=="ordinario"&&reddito>FLAT_LIMIT) {
+        avviso=`<div class="mt-2 rounded bg-rose-100 text-rose-900 px-3 py-2">⚠ Sopra soglia forfettario (${fmt(FLAT_LIMIT)}). In ordinario: <b>${fmt(nettoOrd)}</b>.</div>`;
+      }
+      let residuoBlock="";
+      if(spesa!=null&&nettoSel!=null) {
+        const residuo=nettoSel-spesa;
+        const colorClass=residuo>0?"bg-emerald-100 text-emerald-900":"bg-rose-100 text-rose-900";
+        residuoBlock = `<div class="mt-2">Spesa annua nel comune: <b>${fmt(spesa)}</b> (casa ${fmt(casa)} + paniere ${fmt(paniere)})</div>` +
+          `<div class="mt-2 inline-block px-3 py-1.5 rounded-lg font-semibold ${colorClass}">Residuo netto annuo: ${fmt(residuo)}</div>`;
+      } else if(spesa==null) {
+        residuoBlock=`<div class="mt-2 italic text-slate-600">Dato OMI casa non disponibile per ${c.comune}.</div>`;
+      }
+      let confrontoBlock="";
+      if(reddito<=FLAT_LIMIT) {
+        const diff=(nettoF15||0)-nettoOrd; const segno=diff>=0?"+":"";
+        const diffClass=diff>=0?"bg-emerald-100 text-emerald-900":"bg-rose-100 text-rose-900";
+        confrontoBlock = `<div class="mt-3 border-t border-blue-200 pt-3"><b>Confronto regimi su ${fmt(reddito)} lordo:</b><br>` +
+          `· IRPEF ordinario → <b>${fmt(nettoOrd)}</b> (aliquota effettiva ${((1-nettoOrd/reddito)*100).toFixed(1)}%)<br>` +
+          `· Flat tax 15% → <b>${fmt(nettoF15)}</b> <span class="inline-block ml-1 px-2 py-0.5 rounded text-xs ${diffClass}">${segno}${fmt(diff)} vs ord.</span><br>` +
+          `· Flat tax 5% → <b>${fmt(nettoF05)}</b> (solo startup primi 5 anni)</div>`;
+      } else {
+        confrontoBlock = `<div class="mt-3 border-t border-blue-200 pt-3"><b>Sopra ${fmt(FLAT_LIMIT)}: solo regime ordinario applicabile.</b><br>Netto ordinario: <b>${fmt(nettoOrd)}</b> (aliquota effettiva ${((1-nettoOrd/reddito)*100).toFixed(1)}%)</div>`;
+      }
+      document.getElementById("qvi-sim-out").innerHTML =
+        `<div class="font-semibold">${fmt(reddito)} imponibile in ${c.comune} (${c.sigla_provincia}) &middot; ${labelRegime}</div>` +
+        `<div class="mt-2">Reddito netto stimato: <b>${fmt(nettoSel)}</b></div>` +
+        residuoBlock + avviso + confrontoBlock;
+    }
+    document.getElementById("qvi-sim-reddito").addEventListener("input", simulaReddito);
+    document.getElementById("qvi-sim-regime").addEventListener("change", simulaReddito);
+
+    // Dettaglio
+    window.mostraDettaglio = function(cod) {
+      const c=COMUNI.find(x=>x.codice_istat===cod); if(!c) return;
+      document.getElementById("qvi-calc-comune").value=cod; calcola();
+      document.getElementById("qvi-dettaglio-body").innerHTML =
+        `<h3 class="text-xl font-semibold text-slate-900">${c.comune} <span class="text-slate-500 text-base">(${c.sigla_provincia}, ${c.regione||""})</span></h3>` +
+        `<div class="mt-4 grid md:grid-cols-2 gap-4">` +
+        `<div><div class="text-xs uppercase text-slate-500 tracking-wide">Distribuzione redditi</div>` +
+        `<div class="mt-1">P10: <b>${fmt(c.reddito_p10)}</b> &middot; Mediana: <b>${fmt(c.reddito_mediana)}</b> &middot; P90: <b>${fmt(c.reddito_p90)}</b></div>` +
+        `<div class="mt-1 text-sm text-slate-600">Disuguaglianza P90/P10 = ${fmtN(c.ratio_p90_p10,2)} &middot; ` +
+        `% sotto 15k: ${fmtN(c.pct_sotto_15k,1)}% &middot; % sopra 55k: ${fmtN(c.pct_sopra_55k,1)}%</div></div>` +
+        `<div><div class="text-xs uppercase text-slate-500 tracking-wide">OMI residenziale (${payload.meta.semestre_omi||"—"})</div>` +
+        `<div class="mt-1">Acquisto: <b>${fmt(c.prezzo_acq_eur_mq_med)}/mq</b></div>` +
+        `<div class="mt-1">Affitto: <b>${fmtN(c.affitto_eur_mq_mese_med,2)} €/mq mese</b></div></div>` +
+        `<div class="md:col-span-2"><div class="text-xs uppercase text-slate-500 tracking-wide">Reddito sostenibile (affitto)</div>` +
+        `<div class="mt-1">Single: <b>${fmt(c.rs_single_affitto)}</b> &middot; Coppia 1 stip.: <b>${fmt(c.rs_coppia_affitto)}</b> &middot; Coppia +2 figli: <b>${fmt(c.rs_coppia_2f_affitto)}</b></div></div>` +
+        `<div class="md:col-span-2"><div class="text-xs uppercase text-slate-500 tracking-wide">Indice qualità</div>` +
+        `<div class="mt-1 text-2xl font-bold text-slate-900">${fmtN(c.indice_qualita,1)}/100</div></div>` +
+        `</div>`;
+      document.getElementById("qvi-dettaglio").scrollIntoView({behavior:"smooth", block:"nearest"});
+    };
+
+    // Init defaults
+    if(COMUNI.length) { document.getElementById("qvi-calc-comune").value=COMUNI[0].codice_istat; calcola(); simulaReddito(); }
+  }
+
+  // Fetch payload async
+  fetch(PAYLOAD_URL).then(r=>r.json()).then(init).catch(err => {
+    document.getElementById("qvi-map").innerHTML = '<div class="p-4 text-rose-700 text-sm">Errore caricamento dati: '+err+'</div>';
   });
-}
-buildMap("");
-document.getElementById("indicatore").addEventListener("change", () => buildMap(regSel.value));
-document.getElementById("regione").addEventListener("change", () => buildMap(regSel.value));
-
-// =====================  Tabelle Top/Bottom  =====================
-function tabella(arr, sel) {
-  const tb = document.querySelector(sel + " tbody");
-  tb.innerHTML = "";
-  arr.forEach((c, i) => {
-    const tr = document.createElement("tr");
-    tr.style.cursor = "pointer";
-    tr.innerHTML =
-      `<td>${i+1}</td><td>${c.comune}</td><td>${c.sigla_provincia}</td>` +
-      `<td class="num">${fmtN(c.indice_qualita, 1)}</td>` +
-      `<td class="num">${fmt(c.reddito_mediana)}</td>` +
-      `<td class="num">${fmtN(c.affitto_eur_mq_mese_med)}</td>`;
-    tr.addEventListener("click", () => mostraDettaglio(c.codice_istat));
-    tb.appendChild(tr);
-  });
-}
-const sortedDesc = [...COMUNI].filter(c => c.indice_qualita != null).sort((a, b) => b.indice_qualita - a.indice_qualita);
-tabella(sortedDesc.slice(0, 30), "#top-tab");
-tabella(sortedDesc.slice(-30).reverse(), "#bot-tab");
-
-// =====================  Calcolatore  =====================
-function calcola() {
-  const cod = document.getElementById("calc-comune").value;
-  const profKey = document.getElementById("calc-profilo").value;
-  const modalita = document.getElementById("calc-modalita").value;
-  const c = COMUNI.find(x => x.codice_istat === cod);
-  const p = PROFILI[profKey];
-  if (!c || !p) { document.getElementById("calc-out").innerHTML = "Seleziona un comune."; return; }
-  const paniere = PANIERE[profKey];
-  const casa = costoCasaAnnuo(p, modalita, c.affitto_eur_mq_mese_med, c.prezzo_acq_eur_mq_med);
-  if (casa == null) { document.getElementById("calc-out").innerHTML = "Dati casa non disponibili."; return; }
-  const spesa = paniere + casa;
-  const lordo = lordoPerNetto(spesa, p.figli, p.percettori);
-  const nettoMediana = nettoDaLordo(c.reddito_mediana || 0, p.figli);
-  const residuo = nettoMediana - spesa;
-  const colore = residuo > 0 ? "badge-good" : "badge-bad";
-  document.getElementById("calc-out").innerHTML =
-    `<b>${c.comune} (${c.sigla_provincia})</b> — profilo: ${p.label}, ${p.mq} mq, ${modalita}<br><br>` +
-    `Spesa annua casa: <b>${fmt(casa)}</b><br>` +
-    `Spesa annua altre voci (paniere): <b>${fmt(paniere)}</b><br>` +
-    `Spesa totale annua: <b>${fmt(spesa)}</b><br><br>` +
-    `Reddito lordo familiare necessario: <b>${fmt(lordo)}</b><br>` +
-    `Reddito mediano comunale (lordo): <b>${fmt(c.reddito_mediana)}</b> &nbsp; (netto stimato: ${fmt(nettoMediana)})<br><br>` +
-    `<span class="badge ${colore}">Residuo annuo dalla mediana: ${fmt(residuo)}</span>`;
-}
-document.getElementById("calc-comune").addEventListener("change", calcola);
-document.getElementById("calc-profilo").addEventListener("change", calcola);
-document.getElementById("calc-modalita").addEventListener("change", calcola);
-
-function simulaReddito() {
-  const cod = document.getElementById("calc-comune").value;
-  const profKey = document.getElementById("calc-profilo").value;
-  const modalita = document.getElementById("calc-modalita").value;
-  const regime = document.getElementById("sim-regime").value;
-  const reddito = parseFloat(document.getElementById("sim-reddito").value) || 0;
-  const c = COMUNI.find(x => x.codice_istat === cod);
-  const p = PROFILI[profKey];
-  if (!c || !p) { document.getElementById("sim-out").innerHTML = "Seleziona un comune."; return; }
-  const paniere = PANIERE[profKey];
-  const casa = costoCasaAnnuo(p, modalita, c.affitto_eur_mq_mese_med, c.prezzo_acq_eur_mq_med);
-  const spesa = casa != null ? paniere + casa : null;
-
-  // Calcolo netto per entrambi i regimi (per il confronto)
-  const nettoOrd = nettoDaLordo(reddito, p.figli);
-  const nettoF15 = nettoFlatTax(reddito, 0.15);
-  const nettoF05 = nettoFlatTax(reddito, 0.05);
-  const nettoSel = regime === "ordinario" ? nettoOrd
-                 : regime === "flat15"   ? nettoF15
-                                          : nettoF05;
-  const labelRegime = regime === "ordinario" ? "IRPEF ordinario"
-                    : regime === "flat15"   ? "Flat tax 15%"
-                                              : "Flat tax 5% (startup)";
-
-  // Avviso forfettario se sopra soglia
-  let avviso = "";
-  if (regime !== "ordinario" && reddito > FLAT_LIMIT) {
-    avviso = `<div style="background: #ffd6d6; padding: 0.5rem; margin-top: 0.5rem; border-radius: 4px; font-size: 0.85rem;">` +
-      `⚠ Sopra soglia forfettario (${fmt(FLAT_LIMIT)}). In regime ordinario, netto: <b>${fmt(nettoOrd)}</b>.</div>`;
-  }
-
-  let residuoBlock = "";
-  if (spesa != null && nettoSel != null) {
-    const residuo = nettoSel - spesa;
-    const colore = residuo > 0 ? "badge-good" : "badge-bad";
-    residuoBlock = `<br>Spesa annua nel comune: <b>${fmt(spesa)}</b> ` +
-                   `(casa ${fmt(casa)} + paniere ${fmt(paniere)})<br>` +
-                   `<span class="badge ${colore}">Residuo netto annuo: ${fmt(residuo)}</span>`;
-  } else if (spesa == null) {
-    residuoBlock = `<br><i>Dato OMI casa non disponibile per ${c.comune}.</i>`;
-  }
-
-  let confrontoBlock = "";
-  if (reddito <= FLAT_LIMIT) {
-    const diff = (nettoF15 || 0) - nettoOrd;
-    const segno = diff >= 0 ? "+" : "";
-    confrontoBlock =
-      `<br><br><div style="font-size: 0.9rem;"><b>Confronto regimi su ${fmt(reddito)} lordo:</b><br>` +
-      `· IRPEF ordinario → netto <b>${fmt(nettoOrd)}</b> (aliquota effettiva ${((1 - nettoOrd / reddito) * 100).toFixed(1)}%)<br>` +
-      `· Flat tax 15%   → netto <b>${fmt(nettoF15)}</b> ` +
-      `<span class="badge ${diff >= 0 ? 'badge-good' : 'badge-bad'}">${segno}${fmt(diff)} vs ordinario</span><br>` +
-      `· Flat tax 5%    → netto <b>${fmt(nettoF05)}</b> (solo startup, primi 5 anni)</div>`;
-  } else {
-    confrontoBlock = `<br><br><div style="font-size: 0.9rem;"><b>Sopra ${fmt(FLAT_LIMIT)}: solo regime ordinario applicabile.</b><br>` +
-      `Netto ordinario: <b>${fmt(nettoOrd)}</b> (aliquota effettiva ${((1 - nettoOrd / reddito) * 100).toFixed(1)}%)</div>`;
-  }
-
-  document.getElementById("sim-out").innerHTML =
-    `<b>Simulazione: ${fmt(reddito)} imponibile in ${c.comune} (${c.sigla_provincia})</b><br>` +
-    `Profilo: ${p.label}, ${p.mq} mq, ${modalita}, regime <b>${labelRegime}</b><br><br>` +
-    `Reddito netto stimato (regime selezionato): <b>${fmt(nettoSel)}</b>` +
-    residuoBlock +
-    avviso +
-    confrontoBlock;
-}
-document.getElementById("sim-reddito").addEventListener("input", simulaReddito);
-document.getElementById("sim-regime").addEventListener("change", simulaReddito);
-document.getElementById("calc-comune").addEventListener("change", simulaReddito);
-document.getElementById("calc-profilo").addEventListener("change", simulaReddito);
-document.getElementById("calc-modalita").addEventListener("change", simulaReddito);
-
-// =====================  Dettaglio comune  =====================
-function mostraDettaglio(cod) {
-  const c = COMUNI.find(x => x.codice_istat === cod);
-  if (!c) return;
-  document.getElementById("calc-comune").value = cod;
-  calcola();
-  const html =
-    `<h3 style="margin-top: 0">${c.comune} <small>(${c.sigla_provincia})</small></h3>` +
-    `<table>` +
-    `<tr><th>Distribuzione redditi</th><td class="num">P10: ${fmt(c.reddito_p10)}</td>` +
-    `<td class="num">Mediana: ${fmt(c.reddito_mediana)}</td>` +
-    `<td class="num">P90: ${fmt(c.reddito_p90)}</td></tr>` +
-    `<tr><th>Disuguaglianza</th><td colspan="3">P90/P10 = ${fmtN(c.ratio_p90_p10, 2)}` +
-    `&nbsp;&nbsp; (% sotto 15k: ${fmtN(c.pct_sotto_15k, 1)}%, ` +
-    `% sopra 55k: ${fmtN(c.pct_sopra_55k, 1)}%)</td></tr>` +
-    `<tr><th>OMI residenziale</th><td colspan="3">Acquisto: ${fmt(c.prezzo_acq_eur_mq_med)}/mq` +
-    `&nbsp;&nbsp; Affitto: ${fmtN(c.affitto_eur_mq_mese_med, 2)} €/mq mese</td></tr>` +
-    `<tr><th>Reddito sostenibile (affitto)</th>` +
-    `<td class="num">single: ${fmt(c.rs_single_affitto)}</td>` +
-    `<td class="num">coppia: ${fmt(c.rs_coppia_affitto)}</td>` +
-    `<td class="num">+2 figli: ${fmt(c.rs_coppia_2f_affitto)}</td></tr>` +
-    `<tr><th>Indice qualità</th><td colspan="3"><b>${fmtN(c.indice_qualita, 1)}/100</b></td></tr>` +
-    `</table>`;
-  document.getElementById("dettaglio").innerHTML = html;
-  document.getElementById("dettaglio").scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-
-// init calcolatore
-if (COMUNI.length) {
-  document.getElementById("calc-comune").value = COMUNI[0].codice_istat;
-  calcola();
-  simulaReddito();
-}
+})();
 </script>
 
 <?php wp_footer(); ?>
