@@ -90,7 +90,7 @@ qualita-vita-italia/
 ## Setup
 
 ```bash
-git clone https://github.com/<user>/qualita-vita-italia.git
+git clone https://github.com/DrElegantia/qualita-vita-italia.git
 cd qualita-vita-italia
 python3 -m venv .venv
 source .venv/bin/activate
