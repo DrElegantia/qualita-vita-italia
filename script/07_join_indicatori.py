@@ -288,10 +288,25 @@ def calcola_indice_qualita(df: pd.DataFrame) -> pd.Series:
     else:
         score_disug = pd.Series([50.0] * len(df), index=df.index)
 
-    # Pesi: 55% residuo + 35% casa + 10% disuguaglianza
-    score_finale = (0.55 * score_residuo.fillna(0)
-                    + 0.35 * score_casa_acq.fillna(50)
-                    + 0.10 * score_disug.fillna(50))
+    # Servizi BES (regionale): score gia normalizzato 0-100 nel join
+    if "score_bes" in df.columns and df["score_bes"].notna().any():
+        score_bes = df["score_bes"].fillna(50)
+    else:
+        score_bes = pd.Series([50.0] * len(df), index=df.index)
+
+    # Sicurezza: tasso delitti per 10k (provincia capoluogo), invertito
+    if "tasso_delitti_per_10k" in df.columns and df["tasso_delitti_per_10k"].notna().any():
+        score_sic = normalize(df["tasso_delitti_per_10k"], invert=True)
+    else:
+        score_sic = pd.Series([50.0] * len(df), index=df.index)
+
+    # Pesi finali (con F3 disponibile):
+    # 40% residuo + 20% accessibilita casa + 20% BES + 15% sicurezza + 5% disuguaglianza
+    score_finale = (0.40 * score_residuo.fillna(0)
+                    + 0.20 * score_casa_acq.fillna(50)
+                    + 0.20 * score_bes
+                    + 0.15 * score_sic
+                    + 0.05 * score_disug.fillna(50))
     return score_finale.round(1)
 
 
@@ -324,6 +339,73 @@ def main() -> int:
         df = df_red.copy()
         df["prezzo_acq_eur_mq_med"] = None
         df["affitto_eur_mq_mese_med"] = None
+
+    # Join ISTAT delitti capoluoghi: per ogni provincia, prendo il dato del capoluogo
+    # e lo applico a tutti i comuni della provincia (proxy provinciale).
+    delitti_path = PROC / "istat_delitti_capoluoghi.csv"
+    if delitti_path.exists():
+        df_delitti = pd.read_csv(delitti_path, dtype={"codice_istat": str},
+                                  keep_default_na=False, na_values=[""])
+        # Per ogni capoluogo abbiamo il codice ISTAT comunale → mappo a provincia via df
+        cap_to_prov = df.set_index("codice_istat")["sigla_provincia"].to_dict()
+        df_delitti["sigla_provincia"] = df_delitti["codice_istat"].map(cap_to_prov)
+        # Per ogni provincia: tasso delitti per 10k abitanti del capoluogo (uso n_contribuenti × 1.36 come proxy popolazione).
+        cap_pop = df.set_index("codice_istat")["n_contribuenti"].to_dict()
+        df_delitti["pop_stimata"] = df_delitti["codice_istat"].map(cap_pop) * 1.36
+        df_delitti["tasso_delitti_per_10k"] = (df_delitti["totale_delitti"] /
+                                                df_delitti["pop_stimata"] * 10_000).round(1)
+        prov_to_tasso = df_delitti.dropna(subset=["sigla_provincia", "tasso_delitti_per_10k"]) \
+            .groupby("sigla_provincia")["tasso_delitti_per_10k"].mean().to_dict()
+        df["tasso_delitti_per_10k"] = df["sigla_provincia"].map(prov_to_tasso)
+        log.info("delitti: join su %d province (covered %d comuni / %d totali)",
+                 len(prov_to_tasso),
+                 int(df["tasso_delitti_per_10k"].notna().sum()), len(df))
+    else:
+        log.warning("istat_delitti_capoluoghi.csv non trovato — score sicurezza non calcolato")
+        df["tasso_delitti_per_10k"] = None
+
+    # Join ISTAT BES regionale
+    bes_path = PROC / "istat_bes_regionale.csv"
+    if bes_path.exists():
+        df_bes = pd.read_csv(bes_path, keep_default_na=False, na_values=[""])
+        bes_cols = [c for c in df_bes.columns if c != "regione"]
+        df = df.merge(df_bes, on="regione", how="left")
+        log.info("BES: join su %d regioni × %d indicatori",
+                 df_bes.shape[0], len(bes_cols))
+
+        # Score BES sintetico: media z-score per ciascun indicatore (con verso)
+        # Indicatori positivi e negativi gestiti separatamente
+        BES_VERSO = {
+            "salute_speranza_vita": "+",
+            "istruzione_secondaria": "+",
+            "istruzione_terziaria": "+",
+            "istruzione_neet": "-",
+            "lavoro_tasso_occupazione": "+",
+            "lavoro_non_partecipazione": "-",
+            "politica_affluenza": "+",
+            "servizi_banda_larga": "+",
+        }
+        zscores = []
+        for col, verso in BES_VERSO.items():
+            if col not in df.columns:
+                continue
+            s = df[col].astype(float)
+            mu = s.mean()
+            sd = s.std()
+            if sd > 0:
+                z = (s - mu) / sd
+                if verso == "-":
+                    z = -z
+                zscores.append(z)
+        if zscores:
+            score_bes_raw = sum(zscores) / len(zscores)
+            # Normalizza 0-100 (5°-95° percentile)
+            df["score_bes"] = normalize(score_bes_raw).round(1)
+        else:
+            df["score_bes"] = None
+    else:
+        log.warning("istat_bes_regionale.csv non trovato — score BES non calcolato")
+        df["score_bes"] = None
 
     # Pre-calcolo reddito sostenibile per ogni profilo, modalita affitto
     log.info("calcolo reddito sostenibile per %d profili x %d comuni", len(PROFILI), len(df))
@@ -367,6 +449,7 @@ def main() -> int:
         "rs_single_affitto", "rs_coppia_affitto", "rs_coppia_2f_affitto",
         "residuo_single_affitto", "residuo_coppia_2f_affitto",
         "indice_qualita", "omi_disponibile",
+        "score_bes", "tasso_delitti_per_10k",
     ]
     cols_present = [c for c in cols_essenziali if c in df_dash.columns]
 
@@ -401,7 +484,10 @@ def main() -> int:
             "profili": {k: v for k, v in PROFILI.items()},
             "paniere_non_casa": PANIERE_NON_CASA,
             "ipc_regionale": IPC_REGIONALE,
-            "indice_pesi": {"residuo": 0.55, "casa": 0.35, "disuguaglianza": 0.10},
+            "indice_pesi": {
+                "residuo": 0.40, "casa": 0.20, "bes": 0.20,
+                "sicurezza": 0.15, "disuguaglianza": 0.05,
+            },
         },
         "comuni": df_dash[cols_present].astype(object).where(
             pd.notna(df_dash[cols_present]), None).to_dict(orient="records"),
