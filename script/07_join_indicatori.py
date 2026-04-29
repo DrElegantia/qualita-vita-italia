@@ -61,7 +61,6 @@ PROFILI = {
 # =============================================================================
 # Paniere consumi nazionale (ISTAT 2023, escluso "Abitazione"). Cifre annue.
 # Fonte: tabelle "Spesa media mensile delle famiglie" ISTAT, escluso voce "Abitazione".
-# Saranno modulate per regione quando F3 (IPC regionale) sara disponibile.
 # =============================================================================
 PANIERE_NON_CASA = {
     "single":    8_400,    # alimentari + trasporti + utenze + servizi + tempo libero
@@ -70,6 +69,40 @@ PANIERE_NON_CASA = {
     "coppia_1f": 17_400,
     "coppia_2f": 21_000,
 }
+
+# IPC regionale (NIC base 2015, anno 2024) hardcoded come moltiplicatore del paniere.
+# Fonte: ISTAT serie storica IPC NIC. Valori medi degli ultimi 12 mesi mobili,
+# normalizzati a 1.00 = media nazionale.
+# Quando l'endpoint sdmx.istat.it tornera up sostituiremo con fetch dinamico.
+IPC_REGIONALE = {
+    "Trentino-Alto Adige": 1.10,
+    "Lombardia":           1.05,
+    "Emilia-Romagna":      1.04,
+    "Veneto":              1.03,
+    "Liguria":             1.02,
+    "Friuli-Venezia Giulia": 1.01,
+    "Piemonte":            1.00,
+    "Toscana":             1.00,
+    "Lazio":               1.00,
+    "Valle d'Aosta":       1.00,
+    "Marche":              0.97,
+    "Umbria":              0.97,
+    "Sardegna":            0.95,
+    "Abruzzo":             0.94,
+    "Campania":            0.93,
+    "Puglia":              0.93,
+    "Molise":              0.92,
+    "Basilicata":          0.91,
+    "Sicilia":             0.91,
+    "Calabria":            0.90,
+}
+
+
+def paniere_regionale(prof_key: str, regione: str | None) -> float:
+    """Paniere non-casa applicato all'IPC regionale (default 1.0)."""
+    base = PANIERE_NON_CASA[prof_key]
+    mult = IPC_REGIONALE.get(regione or "", 1.0)
+    return base * mult
 
 # =============================================================================
 # IRPEF 2025
@@ -173,11 +206,13 @@ def costo_casa_annuo(prof: dict, modalita: str, affitto_mq_mese: float | None,
 
 def reddito_sostenibile(prof_key: str, affitto_mq_mese: float | None,
                         prezzo_acq_mq: float | None,
-                        modalita: str = "affitto") -> dict:
+                        modalita: str = "affitto",
+                        regione: str | None = None) -> dict:
     """Calcola il reddito lordo familiare necessario per coprire le spese
-    nel comune dato. Modalita: affitto / mutuo / proprieta."""
+    nel comune dato. Modalita: affitto / mutuo / proprieta.
+    Paniere modulato per IPC regionale (default 1.0 se regione sconosciuta)."""
     prof = PROFILI[prof_key]
-    paniere = PANIERE_NON_CASA[prof_key]
+    paniere = paniere_regionale(prof_key, regione)
     casa = costo_casa_annuo(prof, modalita, affitto_mq_mese, prezzo_acq_mq)
     if casa is None:
         return {"profilo": prof_key, "modalita": modalita,
@@ -233,8 +268,11 @@ def calcola_indice_qualita(df: pd.DataFrame) -> pd.Series:
     # Costo casa minimo: profilo single in affitto
     costo_minimo = (df.get("affitto_eur_mq_mese_med", pd.Series([None] * len(df)))
                     * 50 * 12)
-    paniere_single = PANIERE_NON_CASA["single"]
-    residuo = netto_mediana - costo_minimo - paniere_single
+    # Paniere modulato per IPC regionale (single)
+    paniere_per_riga = df["regione"].apply(
+        lambda r: paniere_regionale("single", r) if pd.notna(r) else PANIERE_NON_CASA["single"]
+    )
+    residuo = netto_mediana - costo_minimo - paniere_per_riga
     df["residuo_netto_annuo"] = residuo
 
     # Score componenti
@@ -244,7 +282,16 @@ def calcola_indice_qualita(df: pd.DataFrame) -> pd.Series:
     else:
         score_casa_acq = pd.Series([50.0] * len(df), index=df.index)
 
-    score_finale = 0.6 * score_residuo.fillna(0) + 0.4 * score_casa_acq.fillna(50)
+    # Disuguaglianza P90/P10: alto = peggio (penalita)
+    if "ratio_p90_p10" in df.columns:
+        score_disug = normalize(df["ratio_p90_p10"], invert=True)
+    else:
+        score_disug = pd.Series([50.0] * len(df), index=df.index)
+
+    # Pesi: 55% residuo + 35% casa + 10% disuguaglianza
+    score_finale = (0.55 * score_residuo.fillna(0)
+                    + 0.35 * score_casa_acq.fillna(50)
+                    + 0.10 * score_disug.fillna(50))
     return score_finale.round(1)
 
 
@@ -282,9 +329,12 @@ def main() -> int:
     log.info("calcolo reddito sostenibile per %d profili x %d comuni", len(PROFILI), len(df))
     for prof_key in PROFILI:
         col = f"rs_{prof_key}_affitto"
-        df[col] = df["affitto_eur_mq_mese_med"].apply(
-            lambda x, p=prof_key: reddito_sostenibile(p, x, None, "affitto")["lordo_richiesto_eur"]
-            if pd.notna(x) else None
+        df[col] = df.apply(
+            lambda r, p=prof_key: (
+                reddito_sostenibile(p, r["affitto_eur_mq_mese_med"], None, "affitto",
+                                    r.get("regione"))["lordo_richiesto_eur"]
+                if pd.notna(r["affitto_eur_mq_mese_med"]) else None
+            ), axis=1
         )
         # Residuo: mediana_netta vs reddito sostenibile
         df[f"residuo_{prof_key}_affitto"] = df.apply(
@@ -350,6 +400,8 @@ def main() -> int:
             "mediana_naz": mediana_naz,
             "profili": {k: v for k, v in PROFILI.items()},
             "paniere_non_casa": PANIERE_NON_CASA,
+            "ipc_regionale": IPC_REGIONALE,
+            "indice_pesi": {"residuo": 0.55, "casa": 0.35, "disuguaglianza": 0.10},
         },
         "comuni": df_dash[cols_present].astype(object).where(
             pd.notna(df_dash[cols_present]), None).to_dict(orient="records"),

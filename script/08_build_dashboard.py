@@ -857,42 +857,41 @@ $payload_url = content_url('/uploads/qualita-vita/comuni-dashboard.json');
 
       <!-- 6. METODOLOGIA INDICE QUALITÀ -->
       <section class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
-        <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('6. Come si calcola l\'indice qualità'); ?></h2>
+        <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('6. Come si calcola l\u2019indice qualità'); ?></h2>
         <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
-          <p><?php lc_e('L\'indice è un punteggio 0-100 calcolato per ogni comune che combina due dimensioni: <strong>residuo netto disponibile</strong> dopo aver coperto il costo casa e <strong>accessibilità del costo casa</strong> rispetto al resto d\'Italia. Pesi default: 60% residuo + 40% accessibilità. Quando torneranno disponibili i dati ISTAT (criminalità e BES), i pesi diventeranno 40 / 20 / 20 / 15 / 5.'); ?></p>
+          <p><?php lc_e("L\u2019indice è un punteggio 0-100 che combina <strong>residuo netto disponibile</strong> dopo costo casa, <strong>accessibilità del costo casa</strong> e <strong>disuguaglianza interna</strong> (rapporto P90/P10). Pesi attuali: 55% residuo + 35% accessibilità + 10% disuguaglianza. Costo della vita non-casa modulato per IPC regionale ISTAT. Quando torneranno disponibili i dati ISTAT BES e delittuosità, i pesi diventeranno 40 / 20 / 15 / 15 / 10."); ?></p>
 
           <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e('Formula attuale'); ?></h3>
-          <pre class="rounded-lg bg-slate-900 text-slate-100 p-4 text-xs overflow-x-auto"><code>residuo_netto = mediana_netta − costo_vita_minimo_single
+          <pre style="background:#0f172a;color:#f1f5f9;padding:1rem 1.25rem;border-radius:0.5rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.85rem;line-height:1.55;overflow-x:auto;white-space:pre;margin:0.75rem 0;"><span style="color:#fbbf24">residuo_netto</span> = mediana_netta &minus; costo_vita_minimo_single
               = nettoDaLordo(reddito_mediana_comune)
-              − affitto_OMI × 50 mq × 12 mesi
-              − paniere_ISTAT_single (8.400 €/anno)
+              &minus; affitto_OMI &times; 50 mq &times; 12 mesi
+              &minus; paniere_ISTAT_single &times; IPC_regionale (8.400 &euro; &times; 0,90&minus;1,10)
 
-score_residuo  = normalize(residuo_netto, 5°-95° percentile, 0-100)
-score_casa     = 100 − normalize(prezzo_acquisto_OMI, 5°-95° percentile)
+<span style="color:#fbbf24">score_residuo</span>  = normalize(residuo_netto, 5&deg;-95&deg; percentile, 0-100)
+<span style="color:#fbbf24">score_casa</span>     = 100 &minus; normalize(prezzo_acquisto_OMI, 5&deg;-95&deg; percentile)
+<span style="color:#fbbf24">score_disug</span>    = 100 &minus; normalize(P90 / P10, 5&deg;-95&deg; percentile)
 
-indice_qualita = 0,60 × score_residuo + 0,40 × score_casa</code></pre>
+<span style="color:#34d399;font-weight:600">indice_qualita = 0,55 &times; score_residuo + 0,35 &times; score_casa + 0,10 &times; score_disug</span></pre>
 
           <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e('Peculiarità e scelte metodologiche'); ?></h3>
           <ul class="mt-2 space-y-1.5 text-sm">
-            <li><strong>Mediana, non media</strong>: la media è gonfiata da pochi redditi alti. La mediana stimata per interpolazione lineare nelle 8 fasce MEF è il "vero centro" della distribuzione comunale.</li>
-            <li><strong>Reddito netto stimato</strong>: applichiamo IRPEF 2025 a scaglioni (23/35/43%), detrazione dipendente, addizionali regionale 1,73% e comunale 0,5% medie. Approssimazione: in dashboard l\'indice ipotizza profilo single senza figli.</li>
+            <li><strong>Mediana, non media</strong>: la media è gonfiata da pochi redditi alti. La mediana stimata per interpolazione lineare nelle 8 fasce MEF è il «vero centro» della distribuzione comunale.</li>
+            <li><strong>Reddito netto stimato</strong>: applichiamo IRPEF 2025 a scaglioni (23/35/43%), detrazione dipendente, addizionali regionale 1,73% e comunale 0,5% medie. Approssimazione: in dashboard l\u2019indice ipotizza profilo single senza figli.</li>
             <li><strong>Costo casa minimo single</strong>: 50 mq × affitto OMI medio comunale × 12 mesi. È il costo casa da affittuario per una persona che vive sola.</li>
-            <li><strong>Paniere non-casa nazionale</strong>: stima ISTAT 2023 spese famiglie escluso voce abitazione (8.400 €/anno per single). Uniforme tra regioni in attesa dell\'IPC regionale ISTAT.</li>
+            <li><strong>Paniere non-casa modulato per IPC regionale</strong>: stima ISTAT 2023 spese famiglie escluso voce abitazione (8.400 €/anno per single), moltiplicata per l\u2019indice prezzi al consumo regionale (NIC base 2015): 0,90 Calabria, 0,91 Sicilia, 1,00 Lazio, 1,03 Veneto, 1,05 Lombardia, 1,10 Trentino-Alto Adige.</li>
             <li><strong>Normalizzazione robusta</strong>: usiamo 5° e 95° percentile come bounds (non min/max), per non far dominare gli outlier. I comuni più ricchi/poveri saturano a 100 o 0.</li>
             <li><strong>Inverte il segno sulla casa</strong>: prezzo acquisto basso = score alto (accessibilità). Riccione e Milano vanno in fondo perché il costo casa erode il residuo.</li>
             <li><strong>Comuni rumorosi</strong>: con &lt; 500 contribuenti la mediana è instabile. Sono nel dropdown ma flaggati nel dettaglio.</li>
           </ul>
 
-          <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e('Cosa NON misura (ancora)'); ?></h3>
+          <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e("Cosa NON misura ancora"); ?></h3>
           <ul class="mt-2 space-y-1.5 text-sm">
             <li><strong>Servizi pubblici</strong>: scuole, ospedali, trasporti, banda larga. Indici BES ISTAT provinciali in coda quando l\'endpoint SDMX torna up.</li>
-            <li><strong>Sicurezza</strong>: delittuosità ISTAT provinciale (omicidi, furti, rapine, violenze). Stessa coda.</li>
-            <li><strong>Disuguaglianza interna al comune</strong>: il rapporto P90/P10 è già nel payload (visualizzabile come indicatore mappa) ma non pesa ancora nello score finale.</li>
-            <li><strong>Costo della vita non-casa</strong>: il paniere è nazionale. L\'IPC regionale ISTAT (Calabria 0,90 vs Bolzano 1,12) non è ancora applicato.</li>
-            <li><strong>Reddito da capitale e patrimoniale</strong>: il MEF dichiarazioni IRPEF non cattura i redditi da capitale tassati separatamente né il patrimonio. Comuni di rentier (Cortina, Capalbio) sono sotto-stimati.</li>
+            <li><strong>Sicurezza</strong>: delittuosità ISTAT provinciale (omicidi, furti, rapine, violenze sessuali, cybercrime) per 10k abitanti. Dato annuale con ritardo 12-18 mesi. Stessa coda.</li>
+            <li><strong>Redditi a tassazione separata e patrimonio</strong>: la dichiarazione IRPEF MEF non include cedolare secca affitti (21%), interessi, dividendi e plusvalenze (26%), vincite e premi. Il patrimonio (case, depositi, titoli) non entra in dichiarazione IRPEF. La mediana del reddito complessivo è quindi una proxy per la <em>capacità di spesa corrente</em>, non per la ricchezza. Nei comuni a forte presenza di seconde case e percettori di rendita (Cortina, Capalbio, Forte dei Marmi, Portofino) il reddito disponibile reale dei residenti è plausibilmente più alto di quello fotografato qui.</li>
           </ul>
 
-          <p class="text-sm text-slate-600 mt-4"><?php lc_e('L\'indice è uno strumento descrittivo, non normativo. Non risponde a "dove devo trasferirmi" ma a "dove un reddito mediano si traduce in più residuo dopo il costo casa". Per scelte concrete pesare le proprie priorità: clima, lavoro, famiglia, qualità servizi.'); ?></p>
+          <p class="text-sm text-slate-600 mt-4"><?php lc_e("L\u2019indice è uno strumento descrittivo, non normativo. Non risponde a «dove devo trasferirmi» ma a «dove un reddito mediano si traduce in più residuo dopo il costo casa». Per scelte concrete pesare le proprie priorità: clima, lavoro, famiglia, qualità servizi."); ?></p>
         </div>
       </section>
 
@@ -929,6 +928,12 @@ indice_qualita = 0,60 × score_residuo + 0,40 × score_casa</code></pre>
   function nettoFlatTax(lordo,al) {{ if(lordo>FLAT_LIMIT)return null; return lordo*(1-al); }}
   function lordoPerNetto(target,nFigli,nP) {{ if(target<=0)return 0; let lo=0,hi=250000; const tp=target/nP; for(let i=0;i<40;i++){{ const m=(lo+hi)/2; if(nettoDaLordo(m,nFigli)<tp)lo=m; else hi=m; }} return((lo+hi)/2)*nP; }}
   function costoCasaAnnuo(p,m,af,ac) {{ if(m==="affitto")return af?p.mq*af*12:null; if(m==="proprieta")return 1500; return null; }}
+  // Paniere modulato per IPC regionale (mult ~0.90-1.10)
+  function paniereReg(profKey, regione, panieri, ipc) {{
+    const base = panieri[profKey] || 0;
+    const mult = (ipc && regione && ipc[regione]) ? ipc[regione] : 1.0;
+    return base * mult;
+  }}
   function fmt(n) {{ if(n==null||isNaN(n))return "—"; return Math.round(n).toLocaleString("it-IT")+" €"; }}
   function fmtN(n,d=2) {{ if(n==null||isNaN(n))return "—"; return n.toFixed(d); }}
 
@@ -940,6 +945,7 @@ indice_qualita = 0,60 × score_residuo + 0,40 × score_casa</code></pre>
     const CENTROIDI = payload.centroidi || {{}};
     const PROFILI = payload.meta.profili;
     const PANIERE = payload.meta.paniere_non_casa;
+    const IPC = payload.meta.ipc_regionale || {{}};
 
     // KPI
     const kpiHtml = [
@@ -1104,7 +1110,7 @@ indice_qualita = 0,60 × score_residuo + 0,40 × score_casa</code></pre>
       const c=cod?COMUNI.find(x=>x.codice_istat===cod):null;
       const p=PROFILI[profKey];
       if(!c||!p) {{ document.getElementById("qvi-calc-out").textContent="Seleziona regione, provincia e comune per vedere il calcolo."; return; }}
-      const paniere=PANIERE[profKey];
+      const paniere=paniereReg(profKey,c.regione,PANIERE,IPC);
       const casa=costoCasaAnnuo(p,modalita,c.affitto_eur_mq_mese_med,c.prezzo_acq_eur_mq_med);
       if(casa==null) {{
         document.getElementById("qvi-calc-out").innerHTML =
@@ -1146,7 +1152,7 @@ indice_qualita = 0,60 × score_residuo + 0,40 × score_casa</code></pre>
       const reddito=parseFloat(document.getElementById("qvi-sim-reddito").value)||0;
       const c=COMUNI.find(x=>x.codice_istat===cod); const p=PROFILI[profKey];
       if(!c||!p) {{ document.getElementById("qvi-sim-out").textContent="Seleziona un comune."; return; }}
-      const paniere=PANIERE[profKey];
+      const paniere=paniereReg(profKey,c.regione,PANIERE,IPC);
       const casa=costoCasaAnnuo(p,modalita,c.affitto_eur_mq_mese_med,c.prezzo_acq_eur_mq_med);
       const spesa=casa!=null?paniere+casa:null;
       const nettoOrd=nettoDaLordo(reddito,p.figli);
