@@ -1,0 +1,35 @@
+# Dati raw scaricati (rebuildable, evita repo bloat)
+dati/raw/
+!dati/raw/.gitkeep
+
+# Output build (rebuildable)
+output/dashboard.html
+output/classifica.html
+output/wordpress.html
+output/data/*.json
+output/data/*.geojson
+!output/data/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Log automazione
+automation/*.log
+!automation/.gitkeep

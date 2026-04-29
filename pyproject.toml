@@ -1,0 +1,29 @@
+[project]
+name = "qualita-vita-italia"
+version = "0.1.0"
+description = "Dashboard quality of life italiana per comune. Reddito MEF + costo vita + OMI + criminalita + servizi."
+readme = "README.md"
+authors = [
+    { name = "Umberto Bertonelli", email = "info@umbertobertonelli.it" },
+]
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.1",
+    "requests>=2.31",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "B", "UP"]
+ignore = ["E501"]
