@@ -179,6 +179,23 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
             </table></div>
           </div>
         </div>
+
+        <h3 class="text-lg font-semibold text-slate-900 mt-8 mb-2"><?php lc_e('2b. Classifica capoluoghi di provincia (107)'); ?></h3>
+        <p class="text-sm text-slate-600 mb-3"><?php lc_e('Solo capoluoghi: una riga per provincia (comune più popoloso). Permette il confronto diretto tra le città principali italiane.'); ?></p>
+        <div class="overflow-x-auto"><table id="qvi-cap" class="w-full text-sm">
+          <thead class="bg-slate-100 text-slate-700 sticky top-0"><tr>
+            <th class="text-left px-2 py-1">#</th>
+            <th class="text-left px-2 py-1"><?php lc_e('Capoluogo'); ?></th>
+            <th class="text-left px-2 py-1">Pr</th>
+            <th class="text-left px-2 py-1"><?php lc_e('Regione'); ?></th>
+            <th class="text-right px-2 py-1"><?php lc_e('Indice'); ?></th>
+            <th class="text-right px-2 py-1"><?php lc_e('Mediana €'); ?></th>
+            <th class="text-right px-2 py-1"><?php lc_e('Affitto €/mq'); ?></th>
+            <th class="text-right px-2 py-1">BES</th>
+            <th class="text-right px-2 py-1"><?php lc_e('Delitti/10k'); ?></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table></div>
       </section>
 
       <!-- 3. CALCOLATORE -->
@@ -322,19 +339,41 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
   const PLOTLY_URL = "https://cdn.plot.ly/plotly-2.27.0.min.js";
   const PALETTE = { orange: "#F17820", blue: "#00355F", green: "#1b7f3a", red: "#c0392b", neutral: "#475569" };
 
-  // === Lazy loader Plotly ===
+  // === Lazy loader Plotly + topojson-client ===
   let _plotlyPromise = null;
   function loadPlotly() {
     if (window.Plotly) return Promise.resolve(window.Plotly);
     if (_plotlyPromise) return _plotlyPromise;
-    _plotlyPromise = new Promise((resolve, reject) => {
-      const s = document.createElement("script");
-      s.src = PLOTLY_URL; s.async = true;
-      s.onload = () => resolve(window.Plotly);
-      s.onerror = reject;
-      document.head.appendChild(s);
-    });
+    _plotlyPromise = Promise.all([
+      new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = PLOTLY_URL; s.async = true;
+        s.onload = () => resolve(window.Plotly);
+        s.onerror = reject;
+        document.head.appendChild(s);
+      }),
+      new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://unpkg.com/topojson-client@3";
+        s.async = true;
+        s.onload = () => resolve(window.topojson);
+        s.onerror = reject;
+        document.head.appendChild(s);
+      }),
+    ]).then(() => window.Plotly);
     return _plotlyPromise;
+  }
+
+  // Cache GeoJSON comuni dal topojson (riusa l'asset di redditi-irpef gia uploadato)
+  let _geoComuni = null;
+  function loadGeoComuni() {
+    if (_geoComuni) return Promise.resolve(_geoComuni);
+    const url = "/wp-content/uploads/redditi-irpef/municipalities.topo.json?v=4";
+    return fetch(url).then(r => r.json()).then(topo => {
+      const key = Object.keys(topo.objects)[0];
+      _geoComuni = topojson.feature(topo, topo.objects[key]);
+      return _geoComuni;
+    });
   }
 
   // === Schema colonnare → array of objects ===
@@ -511,59 +550,48 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
         if (scope === "big") return c.n_contribuenti >= SOGLIA_BIG;
         return true;
       });
-      const z = subset.map(c => c[indic]);
-      const text = subset.map(c =>
-        `<b>${c.comune}</b> (${c.sigla_provincia})<br>` +
-        `Mediana: ${fmt(c.reddito_mediana)}<br>` +
-        `Affitto: ${fmtN(c.affitto_eur_mq_mese_med)} €/mq mese<br>` +
-        `Prezzo acq: ${fmt(c.prezzo_acq_eur_mq_med)}/mq<br>` +
-        `Indice: ${fmtN(c.indice_qualita,1)}/100`
-      );
-      const lats=subset.map(c=>CENTROIDI[c.codice_istat][0]);
-      const lons=subset.map(c=>CENTROIDI[c.codice_istat][1]);
-      const sizes=subset.map(c=>Math.max(8, Math.min(40, Math.log10(c.n_contribuenti||1000)*6)));
+      // Choropleth comune: usa topojson esistente di redditi-irpef (cached).
+      // Stessa estetica della mappa /macro/redditi-italiani/.
+      loadGeoComuni().then(geo => {
+        const indic = document.getElementById("qvi-indicatore").value;
+        const codeToVal = {};
+        for (const c of subset) codeToVal[c.codice_istat] = c[indic];
+        const codes = subset.map(c=>c.codice_istat);
+        const z = subset.map(c=>c[indic]);
+        const text = subset.map(c =>
+          `<b>${c.comune}</b> (${c.sigla_provincia})<br>` +
+          `Mediana: ${fmt(c.reddito_mediana)}<br>` +
+          `Affitto: ${fmtN(c.affitto_eur_mq_mese_med)} €/mq mese<br>` +
+          `Indice: ${fmtN(c.indice_qualita,1)}/100`
+        );
 
-      // View bounds: usa bbox direttamente per il geo layout (proiezione SVG nativa)
-      let lonRange = [6.6, 18.6], latRange = [36.5, 47.1];  // Italia intera
-      if (prov && payload.meta.bbox_province && payload.meta.bbox_province[prov]) {
-        const b = payload.meta.bbox_province[prov];
-        const padLat = (b[1]-b[0])*0.15+0.05, padLon = (b[3]-b[2])*0.15+0.05;
-        latRange = [b[0]-padLat, b[1]+padLat];
-        lonRange = [b[2]-padLon, b[3]+padLon];
-      } else if (reg && payload.meta.bbox_regioni && payload.meta.bbox_regioni[reg]) {
-        const b = payload.meta.bbox_regioni[reg];
-        const padLat = (b[1]-b[0])*0.10+0.1, padLon = (b[3]-b[2])*0.10+0.1;
-        latRange = [b[0]-padLat, b[1]+padLat];
-        lonRange = [b[2]-padLon, b[3]+padLon];
-      }
+        const colorscale = (indic==="indice_qualita"||indic.startsWith("residuo")||indic==="reddito_mediana"||indic==="score_bes")
+          ? [[0,'#053061'],[0.5,'#f7f7f7'],[1,'#1b7f3a']]
+          : [[0,'#1b7f3a'],[0.5,'#f7f7f7'],[1,'#b2182b']];
 
-      // scattergeo: niente tile esterne, niente mapbox-gl. Render SVG nativo Plotly.
-      const trace = {
-        type:"scattergeo", mode:"markers", lat:lats, lon:lons,
-        marker: {
-          size:sizes, color:z,
-          colorscale: indic==="indice_qualita"||indic.startsWith("residuo")||indic==="reddito_mediana" ? "RdYlGn" : "RdYlGn_r",
-          showscale:true, colorbar:{title:indic, thickness:14, len:0.7},
-          line:{width:0.3, color:"#ffffff"},
-        },
-        text:text, hovertemplate:"%{text}<extra></extra>",
-        customdata: subset.map(c=>c.codice_istat),
-      };
-      const layout = {
-        geo: {
-          scope:"europe", resolution:50,
-          showcountries:true, countrycolor:"#cbd5e1", countrywidth:0.6,
-          showsubunits:true, subunitcolor:"#e2e8f0", subunitwidth:0.4,
-          showland:true, landcolor:"#f8fafc",
-          showocean:true, oceancolor:"#e0f2fe",
-          showlakes:false, showrivers:false, showcoastlines:false,
-          lonaxis:{range:lonRange}, lataxis:{range:latRange},
-          projection:{type:"mercator"},
-        },
-        margin:{t:10,b:10,l:10,r:10}, height:560, paper_bgcolor:"rgba(0,0,0,0)",
-      };
-      Plotly.newPlot("qvi-map", [trace], layout, {displayModeBar:false, responsive:true}).then(gd => {
-        gd.on("plotly_click", e => mostraDettaglio(e.points[0].customdata));
+        const trace = {
+          type:'choropleth', geojson:geo,
+          featureidkey:'properties.com_istat_code',
+          locations:codes, z:z, text:text,
+          hovertemplate:'%{text}<extra></extra>',
+          colorscale:colorscale, showscale:true,
+          colorbar:{title:'', thickness:14, len:0.7},
+          marker:{line:{color:'#ffffff', width:0.2}},
+        };
+        const layout = {
+          geo: {
+            fitbounds:'locations', visible:false, bgcolor:'rgba(0,0,0,0)',
+            projection:{type:'mercator'},
+          },
+          margin:{t:10,b:10,l:0,r:0}, height:560,
+          paper_bgcolor:'rgba(0,0,0,0)',
+        };
+        Plotly.newPlot("qvi-map", [trace], layout, {displayModeBar:false, responsive:true}).then(gd => {
+          gd.on("plotly_click", e => mostraDettaglio(e.points[0].location));
+        });
+      }).catch(err => {
+        document.getElementById("qvi-map").innerHTML =
+          '<div class="p-4 text-rose-700 text-sm">Errore caricamento mappa: '+err+'</div>';
       });
     }
     // Render mappa solo dopo che Plotly e' caricato (lazy).
@@ -609,6 +637,41 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
     }
     tabella(sortedDesc.slice(0,30), "#qvi-top");
     tabella(sortedDesc.slice(-30).reverse(), "#qvi-bot");
+
+    // Classifica 107 capoluoghi: comune piu popoloso per provincia (heuristic)
+    function buildClassificaCapoluoghi() {
+      // Serve full payload (le essential coprono solo top 300, mancano alcuni capoluoghi piccoli)
+      ensureFull().then(() => {
+        const byProv = new Map();
+        for (const c of COMUNI) {
+          if (!c.sigla_provincia || c.indice_qualita == null) continue;
+          const cur = byProv.get(c.sigla_provincia);
+          if (!cur || (c.n_contribuenti||0) > (cur.n_contribuenti||0)) {
+            byProv.set(c.sigla_provincia, c);
+          }
+        }
+        const cap = [...byProv.values()].sort((a,b)=>b.indice_qualita-a.indice_qualita);
+        const tb = document.querySelector("#qvi-cap tbody");
+        tb.innerHTML = "";
+        cap.forEach((c, i) => {
+          const tr = document.createElement("tr");
+          tr.className = "border-t border-slate-200 cursor-pointer hover:bg-slate-50";
+          tr.innerHTML =
+            `<td class="px-2 py-1.5">${i+1}</td>` +
+            `<td class="px-2 py-1.5">${c.comune}</td>` +
+            `<td class="px-2 py-1.5">${c.sigla_provincia}</td>` +
+            `<td class="px-2 py-1.5">${c.regione||""}</td>` +
+            `<td class="px-2 py-1.5 text-right font-medium">${fmtN(c.indice_qualita,1)}</td>` +
+            `<td class="px-2 py-1.5 text-right">${fmt(c.reddito_mediana)}</td>` +
+            `<td class="px-2 py-1.5 text-right">${fmtN(c.affitto_eur_mq_mese_med)}</td>` +
+            `<td class="px-2 py-1.5 text-right">${fmtN(c.score_bes,0)}</td>` +
+            `<td class="px-2 py-1.5 text-right">${fmtN(c.tasso_delitti_per_10k,0)}</td>`;
+          tr.addEventListener("click", () => mostraDettaglio(c.codice_istat));
+          tb.appendChild(tr);
+        });
+      });
+    }
+    buildClassificaCapoluoghi();
 
     // Calcolatore
     function calcola() {
