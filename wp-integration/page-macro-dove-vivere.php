@@ -541,12 +541,7 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
         if (reg) return c.regione === reg;
         return true;
       });
-      // Choropleth comune: usa topojson esistente di redditi-irpef (cached).
-      // Stessa estetica della mappa /macro/redditi-italiani/.
       loadGeoComuni().then(geo => {
-        const indic = document.getElementById("qvi-indicatore").value;
-        const codeToVal = {};
-        for (const c of subset) codeToVal[c.codice_istat] = c[indic];
         const codes = subset.map(c=>c.codice_istat);
         const z = subset.map(c=>c[indic]);
         const text = subset.map(c =>
@@ -556,8 +551,24 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
           `Indice: ${fmtN(c.indice_qualita,1)}/100`
         );
 
-        const colorscale = (indic==="indice_qualita"||indic.startsWith("residuo")||indic==="reddito_mediana"||indic==="score_bes")
-          ? [[0,'#053061'],[0.5,'#f7f7f7'],[1,'#1b7f3a']]
+        // Scala robusta su percentili 5-50-95 (esclude outlier che
+        // appiattirebbero i comuni "centrali" sullo stesso colore)
+        function quantile(arr, p) {
+          const s = arr.filter(v=>v!=null && !isNaN(v)).slice().sort((a,b)=>a-b);
+          if (!s.length) return 0;
+          const idx = (s.length - 1) * p;
+          const lo = Math.floor(idx), hi = Math.ceil(idx);
+          if (lo === hi) return s[lo];
+          return s[lo] + (s[hi] - s[lo]) * (idx - lo);
+        }
+        const zmin = quantile(z, 0.05);
+        const zmax = quantile(z, 0.95);
+        const zmid = quantile(z, 0.50);
+
+        const positiveIndic = ["indice_qualita","reddito_mediana","reddito_p10","reddito_p90","score_bes"]
+                              .includes(indic) || indic.startsWith("residuo");
+        const colorscale = positiveIndic
+          ? [[0,'#b2182b'],[0.5,'#f7f7f7'],[1,'#1b7f3a']]
           : [[0,'#1b7f3a'],[0.5,'#f7f7f7'],[1,'#b2182b']];
 
         const trace = {
@@ -566,8 +577,9 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
           locations:codes, z:z, text:text,
           hovertemplate:'%{text}<extra></extra>',
           colorscale:colorscale, showscale:true,
+          zmin:zmin, zmid:zmid, zmax:zmax,
           colorbar:{title:'', thickness:14, len:0.7},
-          marker:{line:{color:'#ffffff', width:0.2}},
+          marker:{line:{color:'#ffffff', width:0.15}},
         };
         const layout = {
           geo: {
@@ -577,7 +589,10 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
           margin:{t:10,b:10,l:0,r:0}, height:560,
           paper_bgcolor:'rgba(0,0,0,0)',
         };
-        Plotly.newPlot("qvi-map", [trace], layout, {displayModeBar:false, responsive:true}).then(gd => {
+        // Pulisco placeholder prima di Plotly.newPlot (altrimenti rimane 'Caricamento mappa')
+        const mapEl = document.getElementById("qvi-map");
+        mapEl.innerHTML = "";
+        Plotly.newPlot(mapEl, [trace], layout, {displayModeBar:false, responsive:true}).then(gd => {
           gd.on("plotly_click", e => mostraDettaglio(e.points[0].location));
         });
       }).catch(err => {
