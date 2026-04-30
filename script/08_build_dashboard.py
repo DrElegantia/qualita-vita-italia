@@ -1213,21 +1213,45 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
       const lons=subset.map(c=>CENTROIDI[c.codice_istat][1]);
       const sizes=subset.map(c=>Math.max(8, Math.min(40, Math.log10(c.n_contribuenti||1000)*6)));
 
-      // View: zoom auto su regione/provincia selezionata
-      let view = {{ center: {{lat: 42.5, lon: 12.5}}, zoom: 5.2 }};
+      // View bounds: usa bbox direttamente per il geo layout (proiezione SVG nativa)
+      let lonRange = [6.6, 18.6], latRange = [36.5, 47.1];  // Italia intera
       if (prov && payload.meta.bbox_province && payload.meta.bbox_province[prov]) {{
-        view = bboxToView(payload.meta.bbox_province[prov]);
+        const b = payload.meta.bbox_province[prov];
+        const padLat = (b[1]-b[0])*0.15+0.05, padLon = (b[3]-b[2])*0.15+0.05;
+        latRange = [b[0]-padLat, b[1]+padLat];
+        lonRange = [b[2]-padLon, b[3]+padLon];
       }} else if (reg && payload.meta.bbox_regioni && payload.meta.bbox_regioni[reg]) {{
-        view = bboxToView(payload.meta.bbox_regioni[reg]);
+        const b = payload.meta.bbox_regioni[reg];
+        const padLat = (b[1]-b[0])*0.10+0.1, padLon = (b[3]-b[2])*0.10+0.1;
+        latRange = [b[0]-padLat, b[1]+padLat];
+        lonRange = [b[2]-padLon, b[3]+padLon];
       }}
 
+      // scattergeo: niente tile esterne, niente mapbox-gl. Render SVG nativo Plotly.
       const trace = {{
-        type:"scattermapbox", mode:"markers", lat:lats, lon:lons,
-        marker: {{ size:sizes, color:z, colorscale: indic==="indice_qualita"||indic.startsWith("residuo")||indic==="reddito_mediana" ? "RdYlGn" : "RdYlGn_r", showscale:true, colorbar:{{title:indic, thickness:14, len:0.7}} }},
+        type:"scattergeo", mode:"markers", lat:lats, lon:lons,
+        marker: {{
+          size:sizes, color:z,
+          colorscale: indic==="indice_qualita"||indic.startsWith("residuo")||indic==="reddito_mediana" ? "RdYlGn" : "RdYlGn_r",
+          showscale:true, colorbar:{{title:indic, thickness:14, len:0.7}},
+          line:{{width:0.3, color:"#ffffff"}},
+        }},
         text:text, hovertemplate:"%{{text}}<extra></extra>",
         customdata: subset.map(c=>c.codice_istat),
       }};
-      const layout = {{ mapbox:{{style:"open-street-map", center:view.center, zoom:view.zoom}}, margin:{{t:10,b:10,l:10,r:10}}, height:560, paper_bgcolor:"rgba(0,0,0,0)" }};
+      const layout = {{
+        geo: {{
+          scope:"europe", resolution:50,
+          showcountries:true, countrycolor:"#cbd5e1", countrywidth:0.6,
+          showsubunits:true, subunitcolor:"#e2e8f0", subunitwidth:0.4,
+          showland:true, landcolor:"#f8fafc",
+          showocean:true, oceancolor:"#e0f2fe",
+          showlakes:false, showrivers:false, showcoastlines:false,
+          lonaxis:{{range:lonRange}}, lataxis:{{range:latRange}},
+          projection:{{type:"mercator"}},
+        }},
+        margin:{{t:10,b:10,l:10,r:10}}, height:560, paper_bgcolor:"rgba(0,0,0,0)",
+      }};
       Plotly.newPlot("qvi-map", [trace], layout, {{displayModeBar:false, responsive:true}}).then(gd => {{
         gd.on("plotly_click", e => mostraDettaglio(e.points[0].customdata));
       }});
