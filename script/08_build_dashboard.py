@@ -721,8 +721,13 @@ $pin = 'https://pinterest.com/pin/create/button/?url=' . rawurlencode($share_url
 if ($og_image) {{ $pin .= '&media=' . rawurlencode($og_image); }}
 
 // Path JSON dashboard caricato via FTP nel folder uploads
-$payload_url = content_url('/uploads/qualita-vita/comuni-essential.json');
-$payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json');
+// Cache busting: ?v= con timestamp dell'ultimo modify del template,
+// proxy del momento di deploy. Browser scarica nuovo payload quando il
+// template viene aggiornato (deploy FTP). Necessario perche' Altervista
+// non manda Cache-Control coerente e il browser puo' servire JSON stale.
+$qvi_v = (int) @filemtime(__FILE__);
+$payload_url = content_url('/uploads/qualita-vita/comuni-essential.json') . '?v=' . $qvi_v;
+$payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=' . $qvi_v;
 ?><!doctype html>
 <html lang="<?php echo $_lang; ?>">
 <head>
@@ -1389,6 +1394,17 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json');
       const c=COMUNI.find(x=>x.codice_istat===cod); if(!c) return;
       document.getElementById("qvi-calc-comune").value=cod; calcola();
 
+      // Helper testuali per BES e sicurezza
+      const besLabel = (s) => s == null ? "—"
+                       : s >= 80 ? "<b>Alto</b>"
+                       : s >= 50 ? "<b>Medio-alto</b>"
+                       : s >= 30 ? "<b>Medio-basso</b>"
+                       : "<b>Basso</b>";
+      const sicLabel = (t) => t == null ? "—"
+                       : t < 600 ? "<b>Bassa criminalità</b>"
+                       : t < 1200 ? "<b>Criminalità media</b>"
+                       : t < 1800 ? "<b>Criminalità medio-alta</b>"
+                       : "<b>Criminalità alta</b>";
       const detailHtml =
         `<h3 class="text-xl font-semibold text-slate-900">${{c.comune}} <span class="text-slate-500 text-base">(${{c.sigla_provincia}}, ${{c.regione||""}})</span></h3>` +
         `<div class="mt-4 grid md:grid-cols-2 gap-4">` +
@@ -1399,8 +1415,15 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json');
         omiBlockHtml(c) +
         `<div class="md:col-span-2"><div class="text-xs uppercase text-slate-500 tracking-wide">Reddito sostenibile (affitto)</div>` +
         `<div class="mt-1">Single: <b>${{fmt(c.rs_single_affitto)}}</b> &middot; Coppia 1 stip.: <b>${{fmt(c.rs_coppia_affitto)}}</b> &middot; Coppia +2 figli: <b>${{fmt(c.rs_coppia_2f_affitto)}}</b></div></div>` +
-        `<div class="md:col-span-2"><div class="text-xs uppercase text-slate-500 tracking-wide">Indice qualità</div>` +
-        `<div class="mt-1 text-2xl font-bold text-slate-900">${{fmtN(c.indice_qualita,1)}}/100</div></div>` +
+        `<div><div class="text-xs uppercase text-slate-500 tracking-wide">Servizi BES (regione ${{c.regione||"—"}})</div>` +
+        `<div class="mt-1">Score: <b>${{fmtN(c.score_bes,1)}}</b>/100 &middot; ${{besLabel(c.score_bes)}}</div>` +
+        `<div class="mt-1 text-xs text-slate-500">Media z-score 8 indicatori ISTAT 2024 (salute, istruzione, lavoro, banda larga)</div></div>` +
+        `<div><div class="text-xs uppercase text-slate-500 tracking-wide">Sicurezza (provincia ${{c.sigla_provincia||"—"}})</div>` +
+        `<div class="mt-1">Tasso delitti: <b>${{fmtN(c.tasso_delitti_per_10k,1)}}</b> per 10k ab. &middot; ${{sicLabel(c.tasso_delitti_per_10k)}}</div>` +
+        `<div class="mt-1 text-xs text-slate-500">Dato del comune capoluogo (proxy provinciale), 2024</div></div>` +
+        `<div class="md:col-span-2 rounded-xl bg-slate-50 border border-slate-200 p-3"><div class="text-xs uppercase text-slate-500 tracking-wide">Indice qualità</div>` +
+        `<div class="mt-1 text-2xl font-bold text-slate-900">${{fmtN(c.indice_qualita,1)}}/100</div>` +
+        `<div class="mt-1 text-xs text-slate-600">Composito 40% residuo + 20% accessibilità casa + 20% BES + 15% sicurezza + 5% disuguaglianza</div></div>` +
         `</div>`;
       document.getElementById("qvi-dettaglio-body").innerHTML = detailHtml;
       document.getElementById("qvi-dettaglio").scrollIntoView({{behavior:"smooth", block:"nearest"}});
