@@ -364,25 +364,28 @@ def main() -> int:
         log.warning("istat_delitti_capoluoghi.csv non trovato — score sicurezza non calcolato")
         df["tasso_delitti_per_10k"] = None
 
-    # Join ISTAT BES regionale
-    bes_path = PROC / "istat_bes_regionale.csv"
+    # Join ISTAT BES provinciale (NUTS-3, granularita provincia)
+    bes_path = PROC / "istat_bes_provinciale.csv"
     if bes_path.exists():
-        df_bes = pd.read_csv(bes_path, keep_default_na=False, na_values=[""])
-        bes_cols = [c for c in df_bes.columns if c != "regione"]
-        df = df.merge(df_bes, on="regione", how="left")
-        log.info("BES: join su %d regioni × %d indicatori",
+        df_bes = pd.read_csv(bes_path, keep_default_na=False, na_values=[""],
+                             dtype={"sigla_provincia": str})
+        bes_cols = [c for c in df_bes.columns if c != "sigla_provincia"]
+        df = df.merge(df_bes, on="sigla_provincia", how="left")
+        log.info("BES: join su %d province × %d indicatori",
                  df_bes.shape[0], len(bes_cols))
 
         # Score BES sintetico: media z-score per ciascun indicatore (con verso)
-        # Indicatori positivi e negativi gestiti separatamente
         BES_VERSO = {
             "salute_speranza_vita": "+",
             "istruzione_secondaria": "+",
             "istruzione_terziaria": "+",
             "istruzione_neet": "-",
-            "lavoro_tasso_occupazione": "+",
-            "lavoro_non_partecipazione": "-",
-            "politica_affluenza": "+",
+            "istruzione_numeracy_bassa": "-",
+            "istruzione_literacy_bassa": "-",
+            "lavoro_giovani_occupazione": "+",
+            "lavoro_giovani_non_partec": "-",
+            "politica_affluenza_regionale": "+",
+            "politica_consigliere_donne": "+",
             "servizi_banda_larga": "+",
         }
         zscores = []

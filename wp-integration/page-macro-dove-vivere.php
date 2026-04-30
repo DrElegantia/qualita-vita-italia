@@ -125,7 +125,7 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
               <option value="prezzo_acq_eur_mq_med">Prezzo acquisto € /mq</option>
               <option value="ratio_p90_p10">Disuguaglianza P90/P10</option>
               <option value="residuo_single_affitto">Residuo netto annuo (single)</option>
-              <option value="score_bes">BES regionale (servizi/istruzione/lavoro)</option>
+              <option value="score_bes">BES provinciale (salute/istruzione/lavoro/banda)</option>
               <option value="tasso_delitti_per_10k">Delitti per 10k abitanti</option>
             </select>
           </label>
@@ -257,7 +257,7 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
       <section class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
         <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('6. Come si calcola l’indice qualità'); ?></h2>
         <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
-          <p><?php lc_e("L’indice è un punteggio 0-100 che combina cinque dimensioni: <strong>residuo netto disponibile</strong> dopo costo casa, <strong>accessibilità del costo casa</strong>, <strong>servizi BES regionali</strong> (salute, istruzione, lavoro, banda larga), <strong>sicurezza</strong> (tasso delitti capoluogo) e <strong>disuguaglianza interna</strong> (P90/P10). Pesi: 40% residuo + 20% accessibilità + 20% BES + 15% sicurezza + 5% disuguaglianza. Paniere non-casa modulato per IPC regionale ISTAT."); ?></p>
+          <p><?php lc_e("L’indice è un punteggio 0-100 che combina cinque dimensioni: <strong>residuo netto disponibile</strong> dopo costo casa, <strong>accessibilità del costo casa</strong>, <strong>servizi BES provinciali</strong> (salute, istruzione, lavoro, banda larga), <strong>sicurezza</strong> (tasso delitti capoluogo) e <strong>disuguaglianza interna</strong> (P90/P10). Pesi: 40% residuo + 20% accessibilità + 20% BES + 15% sicurezza + 5% disuguaglianza. Paniere non-casa modulato per IPC regionale ISTAT."); ?></p>
 
           <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e('Formula attuale'); ?></h3>
           <pre style="background:#0f172a;color:#f1f5f9;padding:1rem 1.25rem;border-radius:0.5rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.85rem;line-height:1.55;overflow-x:auto;white-space:pre;margin:0.75rem 0;"><span style="color:#fbbf24">residuo_netto</span> = mediana_netta &minus; costo_vita_minimo_single
@@ -268,7 +268,7 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
 <span style="color:#fbbf24">score_residuo</span>  = normalize(residuo_netto, 5&deg;-95&deg; percentile, 0-100)
 <span style="color:#fbbf24">score_casa</span>     = 100 &minus; normalize(prezzo_acquisto_OMI, 5&deg;-95&deg; percentile)
 <span style="color:#fbbf24">score_disug</span>    = 100 &minus; normalize(P90 / P10, 5&deg;-95&deg; percentile)
-<span style="color:#fbbf24">score_bes</span>      = normalize(media z-score 8 indicatori BES regionali)
+<span style="color:#fbbf24">score_bes</span>      = normalize(media z-score 11 indicatori BES provinciali)
 <span style="color:#fbbf24">score_sic</span>      = 100 &minus; normalize(delitti per 10k abitanti, capoluogo)
 
 <span style="color:#34d399;font-weight:600">indice_qualita = 0,40 &times; score_residuo + 0,20 &times; score_casa
@@ -282,14 +282,13 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
             <li><strong>Paniere non-casa modulato per IPC regionale</strong>: stima ISTAT 2023 spese famiglie escluso voce abitazione (8.400 €/anno per single), moltiplicata per l’indice prezzi al consumo regionale (NIC base 2015): 0,90 Calabria, 0,91 Sicilia, 1,00 Lazio, 1,03 Veneto, 1,05 Lombardia, 1,10 Trentino-Alto Adige.</li>
             <li><strong>Normalizzazione robusta</strong>: usiamo 5° e 95° percentile come bounds (non min/max), per non far dominare gli outlier. I comuni più ricchi/poveri saturano a 100 o 0.</li>
             <li><strong>Inverte il segno sulla casa</strong>: prezzo acquisto basso = score alto (accessibilità). Riccione e Milano vanno in fondo perché il costo casa erode il residuo.</li>
-            <li><strong>Servizi BES (regionale)</strong>: media z-score di 8 indicatori ISTAT 2024: speranza di vita, istruzione secondaria/terziaria/NEET, occupazione/non-partecipazione, affluenza elettorale, banda larga. Verso "+" o "-" per ogni indicatore (es. NEET basso = meglio). Score normalizzato 0-100.</li>
+            <li><strong>Servizi BES (provinciale)</strong>: media z-score di 11 indicatori ISTAT 2024 a livello NUTS-3 (provincia): speranza di vita, istruzione secondaria/terziaria, NEET, livello inadeguato di numeracy e literacy (studenti grade 8), occupazione e non-partecipazione giovani, affluenza elettorale regionale, consigliere donne, banda larga. Verso "+" o "-" per ogni indicatore. Score normalizzato 0-100. Province soppresse (Olbia-Tempio, Ogliastra, Medio Campidano, Carbonia-Iglesias) mediate con i successori.</li>
             <li><strong>Sicurezza (capoluoghi)</strong>: tasso totale delitti per 10k abitanti del comune capoluogo, anno 2024. Aggrega 55 tipologie ISTAT (omicidi, furti, rapine, violenze, cybercrime). Applicato come proxy a tutti i comuni della provincia. Stato di base: i grandi capoluoghi hanno tassi maggiori (Milano, Roma, Napoli).</li>
             <li><strong>Comuni rumorosi</strong>: con &lt; 500 contribuenti la mediana è instabile. Sono nel dropdown ma flaggati nel dettaglio.</li>
           </ul>
 
           <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e("Cosa NON misura ancora"); ?></h3>
           <ul class="mt-2 space-y-1.5 text-sm">
-            <li><strong>Granularita BES</strong>: il dato BES e' regionale (NUTS-2), non provinciale ne comunale. Tutti i comuni della stessa regione condividono lo stesso score BES. Per granularita maggiore servono indici sintetici provinciali (ISTAT li produce ogni 2-3 anni come pubblicazione separata).</li>
             <li><strong>Granularita delitti</strong>: il dato di delittuosita ISTAT 2024 e' del comune capoluogo della provincia (242 capoluoghi/grandi citta), applicato a tutti i comuni della provincia (proxy provinciale). I comuni piccoli hanno tipicamente tassi piu bassi del capoluogo.</li>
             <li><strong>Redditi a tassazione separata e patrimonio</strong>: la dichiarazione IRPEF MEF non include cedolare secca affitti (21%), interessi, dividendi e plusvalenze (26%), vincite e premi. Il patrimonio (case, depositi, titoli) non entra in dichiarazione IRPEF. La mediana del reddito complessivo è quindi una proxy per la <em>capacità di spesa corrente</em>, non per la ricchezza. Nei comuni a forte presenza di seconde case e percettori di rendita (Cortina, Capalbio, Forte dei Marmi, Portofino) il reddito disponibile reale dei residenti è plausibilmente più alto di quello fotografato qui.</li>
           </ul>
@@ -725,9 +724,9 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
         omiBlockHtml(c) +
         `<div class="md:col-span-2"><div class="text-xs uppercase text-slate-500 tracking-wide">Reddito sostenibile (affitto)</div>` +
         `<div class="mt-1">Single: <b>${fmt(c.rs_single_affitto)}</b> &middot; Coppia 1 stip.: <b>${fmt(c.rs_coppia_affitto)}</b> &middot; Coppia +2 figli: <b>${fmt(c.rs_coppia_2f_affitto)}</b></div></div>` +
-        `<div><div class="text-xs uppercase text-slate-500 tracking-wide">Servizi BES (regione ${c.regione||"—"})</div>` +
+        `<div><div class="text-xs uppercase text-slate-500 tracking-wide">Servizi BES (provincia ${c.sigla_provincia||"—"})</div>` +
         `<div class="mt-1">Score: <b>${fmtN(c.score_bes,1)}</b>/100 &middot; ${besLabel(c.score_bes)}</div>` +
-        `<div class="mt-1 text-xs text-slate-500">Media z-score 8 indicatori ISTAT 2024 (salute, istruzione, lavoro, banda larga)</div></div>` +
+        `<div class="mt-1 text-xs text-slate-500">Media z-score 11 indicatori ISTAT 2024 a livello provinciale</div></div>` +
         `<div><div class="text-xs uppercase text-slate-500 tracking-wide">Sicurezza (provincia ${c.sigla_provincia||"—"})</div>` +
         `<div class="mt-1">Tasso delitti: <b>${fmtN(c.tasso_delitti_per_10k,1)}</b> per 10k ab. &middot; ${sicLabel(c.tasso_delitti_per_10k)}</div>` +
         `<div class="mt-1 text-xs text-slate-500">Dato del comune capoluogo (proxy provinciale), 2024</div></div>` +

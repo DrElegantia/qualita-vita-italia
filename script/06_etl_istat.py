@@ -110,17 +110,74 @@ NUTS2_TO_REGIONE = {
     "ITG2": "Sardegna",
 }
 
-# Indicatori BES con copertura regionale piena (verificati su edizione 2025).
-# Ogni indicatore ha verso "+" (piu alto = meglio) o "-" (piu basso = meglio).
+# Indicatori BES con copertura PROVINCIALE piena (321 osservazioni = 107 prov × 3 anni).
+# Sostituiscono la versione regionale: copertura granulare, score per provincia.
 BES_INDICATORI = {
     "01SAL001":     ("salute_speranza_vita", "+"),
     "02IST002-N22": ("istruzione_secondaria", "+"),
     "02IST003P-N22":("istruzione_terziaria", "+"),
     "02IST006-N22": ("istruzione_neet", "-"),
-    "03LAV001-N22": ("lavoro_tasso_occupazione", "+"),
-    "03LAV002-N22": ("lavoro_non_partecipazione", "-"),
-    "06POL001":     ("politica_affluenza", "+"),
+    "02IST010P":    ("istruzione_numeracy_bassa", "-"),
+    "02IST011P":    ("istruzione_literacy_bassa", "-"),
+    "03LAV003P-N22":("lavoro_giovani_occupazione", "+"),
+    "03LAV006P-N22":("lavoro_giovani_non_partec", "-"),
+    "06POL001P":    ("politica_affluenza_regionale", "+"),
+    "06POL002P":    ("politica_consigliere_donne", "+"),
     "12SER020":     ("servizi_banda_larga", "+"),
+}
+
+# Mapping NUTS-3 (codifica pre-2008) → sigla provincia attuale.
+# Inclusi 4 codici legacy soppressi (Olbia-Tempio, Ogliastra, Medio Campidano,
+# Carbonia-Iglesias) mappati ai successori.
+NUTS3_TO_SIGLA = {
+    # Piemonte
+    "ITC11":"TO","ITC12":"VC","ITC13":"BI","ITC14":"VB","ITC15":"NO","ITC16":"CN","ITC17":"AT","ITC18":"AL",
+    # Valle d'Aosta
+    "ITC20":"AO",
+    # Liguria
+    "ITC31":"IM","ITC32":"SV","ITC33":"GE","ITC34":"SP",
+    # Lombardia
+    "ITC41":"VA","ITC42":"CO","ITC43":"LC","ITC44":"SO","ITC45":"MI","ITC46":"BG","ITC47":"BS","ITC48":"PV","ITC49":"LO","ITC4A":"CR","ITC4B":"MN",
+    "IT108":"MB",
+    # Trentino-AA
+    "ITD10":"BZ","ITD20":"TN",
+    # Veneto
+    "ITD31":"VR","ITD32":"VI","ITD33":"BL","ITD34":"TV","ITD35":"VE","ITD36":"PD","ITD37":"RO",
+    # Friuli-VG
+    "ITD41":"PN","ITD42":"UD","ITD43":"GO","ITD44":"TS",
+    # Emilia-Romagna
+    "ITD51":"PC","ITD52":"PR","ITD53":"RE","ITD54":"MO","ITD55":"BO","ITD56":"FE","ITD57":"RA","ITD58":"FC","ITD59":"RN",
+    # Toscana
+    "ITE11":"MS","ITE12":"LU","ITE13":"PT","ITE14":"FI","ITE15":"PO","ITE16":"LI","ITE17":"PI","ITE18":"AR","ITE19":"SI","ITE1A":"GR",
+    # Umbria
+    "ITE21":"PG","ITE22":"TR",
+    # Marche
+    "ITE31":"PU","ITE32":"AN","ITE33":"MC","ITE34":"AP",
+    "IT109":"FM",
+    # Lazio
+    "ITE41":"VT","ITE42":"RI","ITE43":"RM","ITE44":"LT","ITE45":"FR",
+    # Abruzzo
+    "ITF11":"AQ","ITF12":"TE","ITF13":"PE","ITF14":"CH",
+    # Molise
+    "ITF21":"IS","ITF22":"CB",
+    # Campania
+    "ITF31":"CE","ITF32":"BN","ITF33":"NA","ITF34":"AV","ITF35":"SA",
+    # Puglia
+    "ITF41":"FG","ITF42":"BA","ITF43":"TA","ITF44":"BR","ITF45":"LE",
+    "IT110":"BT",
+    # Basilicata
+    "ITF51":"PZ","ITF52":"MT",
+    # Calabria
+    "ITF61":"CS","ITF62":"KR","ITF63":"CZ","ITF64":"VV","ITF65":"RC",
+    # Sicilia
+    "ITG11":"TP","ITG12":"PA","ITG13":"ME","ITG14":"AG","ITG15":"CL","ITG16":"EN","ITG17":"CT","ITG18":"RG","ITG19":"SR",
+    # Sardegna (incl. legacy soppressi)
+    "ITG25":"SS","ITG26":"NU","ITG27":"CA","ITG28":"OR",
+    "ITG29":"SS",  # Olbia-Tempio soppressa → assorbita in SS (e in parte SU)
+    "ITG2A":"NU",  # Ogliastra soppressa → assorbita in NU
+    "ITG2B":"SU",  # Medio Campidano soppressa → SU
+    "ITG2C":"SU",  # Carbonia-Iglesias soppressa → SU
+    "IT111":"SU",
 }
 
 
@@ -161,16 +218,17 @@ def aggregate_delitti(rows: list[dict]) -> dict[str, dict]:
 
 
 def aggregate_bes(rows: list[dict]) -> dict[str, dict]:
-    """Aggrega BES_TERRIT per REF_AREA (NUTS-2 regione), prendendo l'ultimo anno
-    disponibile per ogni (regione, indicatore). SEX=T (totale).
-    Per Trentino-Alto Adige media le due Province Autonome (ITH1+ITH2)."""
-    # Costruisco dict {(regione, label): {anno: valore}}
+    """Aggrega BES_TERRIT per REF_AREA NUTS-3 (provincia), prendendo l'ultimo anno
+    disponibile per ogni (provincia, indicatore). SEX=T (totale).
+    Per province soppresse (Olbia-Tempio, Ogliastra, Medio Campidano, Carbonia-
+    Iglesias) il valore viene fuso con la provincia successore via NUTS3_TO_SIGLA."""
+    # Costruisco dict {(sigla, label, nuts): {anno: valore}}
     raw = {}
     for r in rows:
         if r.get("SEX") != "T":
             continue
         nuts = r.get("REF_AREA", "")
-        if nuts not in NUTS2_TO_REGIONE:
+        if nuts not in NUTS3_TO_SIGLA:
             continue
         data_type = r.get("DATA_TYPE", "")
         if data_type not in BES_INDICATORI:
@@ -181,21 +239,21 @@ def aggregate_bes(rows: list[dict]) -> dict[str, dict]:
         except (ValueError, TypeError):
             continue
         anno = r.get("TIME_PERIOD")
-        regione = NUTS2_TO_REGIONE[nuts]
-        raw.setdefault((regione, label, nuts), {})[anno] = v
+        sigla = NUTS3_TO_SIGLA[nuts]
+        raw.setdefault((sigla, label, nuts), {})[anno] = v
 
-    # Per ogni (regione, label, nuts), prendo l'anno piu recente
-    by_reg_label: dict[tuple[str, str], list[float]] = {}
-    for (reg, lbl, nuts), per_year in raw.items():
+    # Per ogni (sigla, label, nuts) prendi anno piu recente
+    by_sigla_label: dict[tuple[str, str], list[float]] = {}
+    for (sigla, lbl, _nuts), per_year in raw.items():
         last = max(per_year.keys())
-        by_reg_label.setdefault((reg, lbl), []).append(per_year[last])
+        by_sigla_label.setdefault((sigla, lbl), []).append(per_year[last])
 
-    # Per Trentino-AA: media i due NUTS (ITH1+ITH2). Per le altre regioni 1 valore.
+    # Per le 4 province soppresse mappate alla nuova: media i valori
     out: dict[str, dict] = {}
-    for (reg, lbl), vals in by_reg_label.items():
-        out.setdefault(reg, {})[lbl] = sum(vals) / len(vals)
+    for (sigla, lbl), vals in by_sigla_label.items():
+        out.setdefault(sigla, {})[lbl] = sum(vals) / len(vals)
 
-    log.info("regioni BES con dato: %d / 20 (Trentino-AA mediato tra Bolzano e Trento)", len(out))
+    log.info("province BES con dato: %d / 107", len(out))
     return out
 
 
@@ -229,14 +287,15 @@ def write_delitti_csv(agg: dict[str, dict]) -> Path:
 
 
 def write_bes_csv(agg: dict[str, dict]) -> Path:
-    out = PROC / "istat_bes_regionale.csv"
+    """Scrive BES a livello provinciale (sigla)."""
+    out = PROC / "istat_bes_provinciale.csv"
     indicatori = sorted({lbl for d in agg.values() for lbl in d.keys()})
     with out.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["regione"] + indicatori)
-        for reg, d in sorted(agg.items()):
-            w.writerow([reg] + [d.get(lbl, "") for lbl in indicatori])
-    log.info("scritto %s (%d regioni × %d indicatori)", out, len(agg), len(indicatori))
+        w.writerow(["sigla_provincia"] + indicatori)
+        for sigla, d in sorted(agg.items()):
+            w.writerow([sigla] + [d.get(lbl, "") for lbl in indicatori])
+    log.info("scritto %s (%d province × %d indicatori)", out, len(agg), len(indicatori))
     return out
 
 
