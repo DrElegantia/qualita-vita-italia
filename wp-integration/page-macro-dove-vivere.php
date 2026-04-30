@@ -114,7 +114,7 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
         <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('1. Mappa interattiva: dove si vive meglio'); ?></h2>
         <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
           <p><?php lc_e('Ogni cerchio è un comune. Dimensione: numero di contribuenti. Colore: indicatore selezionato. Click su un punto per il dettaglio.'); ?></p>
-          <p class="text-sm rounded-xl bg-slate-50 border border-slate-200 p-3"><?php lc_e('Mappa coropletica di tutti i 7.896 comuni italiani. Filtra regione o provincia per zoomare l'area di interesse.'); ?></p>
+          <p class="text-sm rounded-xl bg-slate-50 border border-slate-200 p-3"><?php lc_e('Mappa coropletica di tutti i 7.896 comuni italiani. Filtra regione o provincia per zoomare l’area di interesse.'); ?></p>
         </div>
         <div class="mt-6 flex flex-wrap gap-4 items-center">
           <label class="text-sm"><?php lc_e('Indicatore'); ?>
@@ -269,7 +269,7 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
         <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('6. Come si calcola l’indice qualità'); ?></h2>
         <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
           <p><?php lc_e("L’indice è un punteggio 0-100 che combina cinque dimensioni: <strong>residuo netto disponibile</strong> dopo costo casa, <strong>accessibilità del costo casa</strong>, <strong>servizi BES provinciali</strong> (salute, istruzione, lavoro, banda larga), <strong>sicurezza</strong> (tasso delitti capoluogo) e <strong>disuguaglianza interna</strong> (P90/P10). Pesi: 40% residuo + 20% accessibilità + 20% BES + 15% sicurezza + 5% disuguaglianza. Paniere non-casa modulato per IPC regionale ISTAT."); ?></p>
-          <p class="text-sm text-slate-600 mt-2"><?php lc_e("La mappa è una <strong>coropletica comunale</strong>: ogni poligono e’ un comune italiano, colorato in base all’indicatore selezionato. Stessa logica e geometrie di <a href="/macro/redditi-italiani/" class="text-blue-700 underline">/macro/redditi-italiani/</a>. Selezionando regione o provincia la vista zooma automaticamente."); ?></p>
+          <p class="text-sm text-slate-600 mt-2"><?php lc_e("La mappa è una <strong>coropletica comunale</strong>: ogni poligono e’ un comune italiano, colorato in base all’indicatore selezionato. Stessa logica e geometrie di <a href='/macro/redditi-italiani/' class='text-blue-700 underline'>/macro/redditi-italiani/</a>. Selezionando regione o provincia la vista zooma automaticamente."); ?></p>
 
           <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e('Formula attuale'); ?></h3>
           <pre style="background:#0f172a;color:#f1f5f9;padding:1rem 1.25rem;border-radius:0.5rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.85rem;line-height:1.55;overflow-x:auto;white-space:pre;margin:0.75rem 0;"><span style="color:#fbbf24">residuo_netto</span> = mediana_netta &minus; costo_vita_minimo_single
