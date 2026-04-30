@@ -114,7 +114,7 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
         <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('1. Mappa interattiva: dove si vive meglio'); ?></h2>
         <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
           <p><?php lc_e('Ogni cerchio è un comune. Dimensione: numero di contribuenti. Colore: indicatore selezionato. Click su un punto per il dettaglio.'); ?></p>
-          <p class="text-sm rounded-xl bg-slate-50 border border-slate-200 p-3"><?php lc_e('La mappa carica di default i <strong>capoluoghi e città grandi</strong> (per leggerezza). Filtra una regione, oppure clicca <em>Mostra tutti i comuni</em> per il rendering completo (~7.900 punti).'); ?></p>
+          <p class="text-sm rounded-xl bg-slate-50 border border-slate-200 p-3"><?php lc_e('Mappa coropletica di tutti i 7.896 comuni italiani. Filtra regione o provincia per zoomare l'area di interesse.'); ?></p>
         </div>
         <div class="mt-6 flex flex-wrap gap-4 items-center">
           <label class="text-sm"><?php lc_e('Indicatore'); ?>
@@ -137,12 +137,6 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
           <label class="text-sm"><?php lc_e('Provincia'); ?>
             <select id="qvi-provincia" class="ml-2 rounded border border-slate-300 px-2 py-1 text-sm" disabled>
               <option value=""><?php lc_e('Tutte'); ?></option>
-            </select>
-          </label>
-          <label class="text-sm"><?php lc_e('Visualizza'); ?>
-            <select id="qvi-scope" class="ml-2 rounded border border-slate-300 px-2 py-1 text-sm">
-              <option value="big" selected>Capoluoghi e città grandi (≥40k contribuenti)</option>
-              <option value="all">Tutti i comuni</option>
             </select>
           </label>
         </div>
@@ -275,6 +269,7 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
         <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('6. Come si calcola l’indice qualità'); ?></h2>
         <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
           <p><?php lc_e("L’indice è un punteggio 0-100 che combina cinque dimensioni: <strong>residuo netto disponibile</strong> dopo costo casa, <strong>accessibilità del costo casa</strong>, <strong>servizi BES provinciali</strong> (salute, istruzione, lavoro, banda larga), <strong>sicurezza</strong> (tasso delitti capoluogo) e <strong>disuguaglianza interna</strong> (P90/P10). Pesi: 40% residuo + 20% accessibilità + 20% BES + 15% sicurezza + 5% disuguaglianza. Paniere non-casa modulato per IPC regionale ISTAT."); ?></p>
+          <p class="text-sm text-slate-600 mt-2"><?php lc_e("La mappa è una <strong>coropletica comunale</strong>: ogni poligono e’ un comune italiano, colorato in base all’indicatore selezionato. Stessa logica e geometrie di <a href="/macro/redditi-italiani/" class="text-blue-700 underline">/macro/redditi-italiani/</a>. Selezionando regione o provincia la vista zooma automaticamente."); ?></p>
 
           <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e('Formula attuale'); ?></h3>
           <pre style="background:#0f172a;color:#f1f5f9;padding:1rem 1.25rem;border-radius:0.5rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.85rem;line-height:1.55;overflow-x:auto;white-space:pre;margin:0.75rem 0;"><span style="color:#fbbf24">residuo_netto</span> = mediana_netta &minus; costo_vita_minimo_single
@@ -298,19 +293,21 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
             <li><strong>Costo casa minimo single</strong>: 50 mq × affitto OMI medio comunale × 12 mesi. È il costo casa da affittuario per una persona che vive sola.</li>
             <li><strong>Paniere non-casa modulato per IPC regionale</strong>: stima ISTAT 2023 spese famiglie escluso voce abitazione (8.400 €/anno per single), moltiplicata per l’indice prezzi al consumo regionale (NIC base 2015): 0,90 Calabria, 0,91 Sicilia, 1,00 Lazio, 1,03 Veneto, 1,05 Lombardia, 1,10 Trentino-Alto Adige.</li>
             <li><strong>Normalizzazione robusta</strong>: usiamo 5° e 95° percentile come bounds (non min/max), per non far dominare gli outlier. I comuni più ricchi/poveri saturano a 100 o 0.</li>
-            <li><strong>Inverte il segno sulla casa</strong>: prezzo acquisto basso = score alto (accessibilità). Riccione e Milano vanno in fondo perché il costo casa erode il residuo.</li>
+            <li><strong>Verso degli indicatori</strong>: alcuni hanno verso positivo (residuo netto, BES, occupazione: alto = meglio), altri negativo (prezzo acquisto, tasso delitti, NEET, P90/P10: basso = meglio). Il punteggio finale somma i contributi sempre nel verso "alto = meglio" via inversione esplicita dove serve. Comuni come Riccione e Milano scendono perché il costo casa erode il residuo, non perché siano oggettivamente "scomodi".</li>
             <li><strong>Servizi BES (provinciale)</strong>: media z-score di 11 indicatori ISTAT 2024 a livello NUTS-3 (provincia): speranza di vita, istruzione secondaria/terziaria, NEET, livello inadeguato di numeracy e literacy (studenti grade 8), occupazione e non-partecipazione giovani, affluenza elettorale regionale, consigliere donne, banda larga. Verso "+" o "-" per ogni indicatore. Score normalizzato 0-100. Province soppresse (Olbia-Tempio, Ogliastra, Medio Campidano, Carbonia-Iglesias) mediate con i successori.</li>
-            <li><strong>Sicurezza (capoluoghi)</strong>: tasso totale delitti per 10k abitanti del comune capoluogo, anno 2024. Aggrega 55 tipologie ISTAT (omicidi, furti, rapine, violenze, cybercrime). Applicato come proxy a tutti i comuni della provincia. Stato di base: i grandi capoluoghi hanno tassi maggiori (Milano, Roma, Napoli).</li>
+            <li><strong>Sicurezza (provinciale via capoluogo)</strong>: tasso totale delitti per 10k abitanti del comune capoluogo, anno 2024 (somma di 55 tipologie ISTAT: omicidi, furti, rapine, violenze sessuali, cybercrime, ecc.). Applicato come proxy a tutti i comuni della provincia, perché ISTAT non pubblica il dato per i comuni minori. I capoluoghi grandi (Milano, Roma, Napoli, Firenze) hanno tassi più alti perché concentrano la criminalità denunciata della provincia, non perché siano in assoluto più pericolosi.</li>
             <li><strong>Comuni rumorosi</strong>: con &lt; 500 contribuenti la mediana è instabile. Sono nel dropdown ma flaggati nel dettaglio.</li>
           </ul>
 
-          <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e("Cosa NON misura ancora"); ?></h3>
+          <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e("Cosa NON misura"); ?></h3>
           <ul class="mt-2 space-y-1.5 text-sm">
-            <li><strong>Granularita delitti</strong>: il dato di delittuosita ISTAT 2024 e' del comune capoluogo della provincia (242 capoluoghi/grandi citta), applicato a tutti i comuni della provincia (proxy provinciale). I comuni piccoli hanno tipicamente tassi piu bassi del capoluogo.</li>
-            <li><strong>Redditi a tassazione separata e patrimonio</strong>: la dichiarazione IRPEF MEF non include cedolare secca affitti (21%), interessi, dividendi e plusvalenze (26%), vincite e premi. Il patrimonio (case, depositi, titoli) non entra in dichiarazione IRPEF. La mediana del reddito complessivo è quindi una proxy per la <em>capacità di spesa corrente</em>, non per la ricchezza. Nei comuni a forte presenza di seconde case e percettori di rendita (Cortina, Capalbio, Forte dei Marmi, Portofino) il reddito disponibile reale dei residenti è plausibilmente più alto di quello fotografato qui.</li>
+            <li><strong>Redditi a tassazione separata e patrimonio</strong>: la dichiarazione IRPEF MEF non include cedolare secca affitti (21%), interessi, dividendi e plusvalenze (26%), vincite e premi. Il patrimonio (case, depositi, titoli) non entra in IRPEF. La mediana del reddito complessivo è quindi una proxy per la <em>capacità di spesa corrente</em>, non per la ricchezza. Nei comuni a forte presenza di seconde case e percettori di rendita (Cortina d’Ampezzo, Capalbio, Forte dei Marmi, Portofino) il reddito disponibile reale dei residenti è plausibilmente più alto di quello fotografato qui.</li>
+            <li><strong>Costo della vita non-casa a livello sub-regionale</strong>: l’IPC ISTAT (NIC) e’ pubblicato solo a livello regionale e nazionale. Tutti i comuni della stessa regione condividono lo stesso moltiplicatore del paniere. La realta’ territoriale (Milano vs Lodi) puo’ differire ma non c’e’ un dato pubblico migliore.</li>
+            <li><strong>Qualita’ ambiente, traffico, clima</strong>: aria, verde urbano, tempi di percorrenza, incidenti stradali, eventi meteo estremi. Esistono indicatori ARPA/ISPRA territoriali ma non sono integrati nel composito attuale.</li>
+            <li><strong>Soggettivita’</strong>: l’indice non valuta dimensioni soggettive come socialita’, vivacita’ culturale, opportunita’ di lavoro per profili specifici, presenza di comunita’ di pari (es. genitori giovani, pensionati attivi, espatriati).</li>
           </ul>
 
-          <p class="text-sm text-slate-600 mt-4"><?php lc_e("L’indice è uno strumento descrittivo, non normativo. Non risponde a «dove devo trasferirmi» ma a «dove un reddito mediano si traduce in più residuo dopo il costo casa». Per scelte concrete pesare le proprie priorità: clima, lavoro, famiglia, qualità servizi."); ?></p>
+          <p class="text-sm text-slate-600 mt-4"><?php lc_e("L’indice è uno strumento descrittivo, non normativo. Risponde alla domanda: «dove, in media, un reddito mediano si traduce in più potere d’acquisto residuo, in un contesto provinciale con servizi BES soddisfacenti, sicurezza buona e disuguaglianza interna contenuta?». Non sostituisce la valutazione personale: clima, lavoro, famiglia, comunita’, qualita’ dei singoli servizi locali pesano in modo diverso per ogni individuo. Usalo per orientarti, non per decidere."); ?></p>
         </div>
       </section>
 
@@ -532,22 +529,16 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
     regCalc.addEventListener("change", () => { ensureFull().then(popolaProvince); });
     provCalc.addEventListener("change", () => { popolaComuni(); });
 
-    const SOGLIA_BIG = 40000; // n_contribuenti per "città grande"
     function buildMap() {
       const indic = document.getElementById("qvi-indicatore").value;
-      const scope = document.getElementById("qvi-scope").value;
       const reg = regSel.value;
       const prov = provMapSel.value;
-      // Filtri:
-      // - se provincia selezionata → solo quella provincia (override scope)
-      // - se regione selezionata (no provincia) → tutti i comuni di quella regione
-      // - altrimenti applica scope (big = capoluoghi grandi, all = tutto)
+      // Default: tutti i comuni con valore presente per l'indicatore.
+      // Filtri opzionali: regione e/o provincia per zoom.
       const subset = COMUNI.filter(c => {
-        if (!CENTROIDI[c.codice_istat]) return false;
         if (c[indic] == null) return false;
         if (prov) return c.sigla_provincia === prov;
         if (reg) return c.regione === reg;
-        if (scope === "big") return c.n_contribuenti >= SOGLIA_BIG;
         return true;
       });
       // Choropleth comune: usa topojson esistente di redditi-irpef (cached).
@@ -600,7 +591,9 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
     function ensurePlotlyAndBuild() {
       const mapEl = document.getElementById("qvi-map");
       mapEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#64748b">Caricamento mappa…</div>';
-      return loadPlotly().then(buildMap);
+      // ensureFull garantisce che la mappa abbia tutti i 7896 comuni
+      // (essential ne ha solo 300). Plotly + topojson + payload paralleli.
+      return Promise.all([loadPlotly(), ensureFull()]).then(buildMap);
     }
     let mapTriggered = false;
     function triggerMap() { if (mapTriggered) return; mapTriggered = true; ensurePlotlyAndBuild(); }
@@ -617,10 +610,6 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
       ensureFull().then(() => { popolaProvinceMappa(); if (mapTriggered) buildMap(); });
     });
     document.getElementById("qvi-provincia").addEventListener("change", () => mapTriggered && buildMap());
-    document.getElementById("qvi-scope").addEventListener("change", (e) => {
-      if (e.target.value === "all") ensureFull().then(() => mapTriggered && buildMap());
-      else if (mapTriggered) buildMap();
-    });
 
     // Tabelle
     const sortedDesc = [...COMUNI].filter(c=>c.indice_qualita!=null).sort((a,b)=>b.indice_qualita-a.indice_qualita);
