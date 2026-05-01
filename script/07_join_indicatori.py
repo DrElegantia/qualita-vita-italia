@@ -288,24 +288,35 @@ def calcola_indice_qualita(df: pd.DataFrame) -> pd.Series:
     else:
         score_disug = pd.Series([50.0] * len(df), index=df.index)
 
-    # Servizi BES (regionale): score gia normalizzato 0-100 nel join
-    if "score_bes" in df.columns and df["score_bes"].notna().any():
-        score_bes = df["score_bes"].fillna(50)
-    else:
-        score_bes = pd.Series([50.0] * len(df), index=df.index)
+    # Servizi BES (provinciale ISTAT, 11 indicatori)
+    score_bes = df["score_bes"].fillna(50) if "score_bes" in df.columns and df["score_bes"].notna().any() \
+                else pd.Series([50.0] * len(df), index=df.index)
 
-    # Sicurezza: tasso delitti per 10k (provincia capoluogo), invertito
-    if "tasso_delitti_per_10k" in df.columns and df["tasso_delitti_per_10k"].notna().any():
-        score_sic = normalize(df["tasso_delitti_per_10k"], invert=True)
-    else:
-        score_sic = pd.Series([50.0] * len(df), index=df.index)
+    # S24H per macro-area (provinciale, 24 indicatori)
+    def get_s24h(col):
+        return df[col].fillna(50) if col in df.columns and df[col].notna().any() \
+               else pd.Series([50.0] * len(df), index=df.index)
+    s24h_sanita    = get_s24h("score_s24h_sanita")
+    s24h_sicurezza = get_s24h("score_s24h_sicurezza")
+    s24h_ambiente  = get_s24h("score_s24h_ambiente")
+    s24h_vita      = get_s24h("score_s24h_vita")
 
-    # Pesi finali (con F3 disponibile):
-    # 40% residuo + 20% accessibilita casa + 20% BES + 15% sicurezza + 5% disuguaglianza
-    score_finale = (0.40 * score_residuo.fillna(0)
-                    + 0.20 * score_casa_acq.fillna(50)
-                    + 0.20 * score_bes
-                    + 0.15 * score_sic
+    # Pesi composito v3 (con S24H integrato):
+    # 28% residuo netto      (capacita di spesa dopo casa)
+    # 15% accessibilita casa (1 - prezzo acquisto OMI)
+    # 12% BES ISTAT          (salute, istruzione, lavoro provinciale)
+    # 12% S24H sicurezza     (4 sotto-indicatori, piu' ricco di tasso delitti raw)
+    # 10% S24H sanita        (mortalita evitabile/tumore, emigrazione, medici)
+    # 10% S24H ambiente      (aria, clima, ecosistema, rischio idrogeologico)
+    #  8% S24H vita          (cultura, ristoranti, librerie, palestre)
+    #  5% disuguaglianza     (P90/P10)
+    score_finale = (0.28 * score_residuo.fillna(0)
+                    + 0.15 * score_casa_acq.fillna(50)
+                    + 0.12 * score_bes
+                    + 0.12 * s24h_sicurezza
+                    + 0.10 * s24h_sanita
+                    + 0.10 * s24h_ambiente
+                    + 0.08 * s24h_vita
                     + 0.05 * score_disug.fillna(50))
     return score_finale.round(1)
 
@@ -407,8 +418,105 @@ def main() -> int:
         else:
             df["score_bes"] = None
     else:
-        log.warning("istat_bes_regionale.csv non trovato — score BES non calcolato")
+        log.warning("istat_bes_provinciale.csv non trovato — score BES non calcolato")
         df["score_bes"] = None
+
+    # Join Sole24Ore QDV2025 (107 province): 24 indicatori complementari
+    # Sanita, sicurezza disaggregata, ambiente/clima, lavoro, casa, cultura, demografia.
+    # Licenza CC-BY-NC-4.0: attribuzione obbligatoria (vedi nota metodologica).
+    s24h_path = PROC / "sole24h_qdv2025_provincia.csv"
+    if s24h_path.exists():
+        df_s24h = pd.read_csv(s24h_path, keep_default_na=False, na_values=[""])
+        # Mapping DENOMINAZIONE CORRENTE → sigla provincia MEF
+        # Heuristic: prendo il comune piu' popoloso per provincia con stesso nome
+        # canonico (eccezioni gestite manualmente)
+        S24H_NAME_TO_SIGLA = {
+            "Torino":"TO","Vercelli":"VC","Biella":"BI","Verbano-Cusio-Ossola":"VB","Novara":"NO",
+            "Cuneo":"CN","Asti":"AT","Alessandria":"AL","Aosta":"AO","Imperia":"IM","Savona":"SV",
+            "Genova":"GE","La Spezia":"SP","Varese":"VA","Como":"CO","Lecco":"LC","Sondrio":"SO",
+            "Milano":"MI","Bergamo":"BG","Brescia":"BS","Pavia":"PV","Lodi":"LO","Cremona":"CR",
+            "Mantova":"MN","Monza e Brianza":"MB","Monza e della Brianza":"MB","Bolzano":"BZ",
+            "Trento":"TN","Verona":"VR","Vicenza":"VI","Belluno":"BL","Treviso":"TV","Venezia":"VE",
+            "Padova":"PD","Rovigo":"RO","Pordenone":"PN","Udine":"UD","Gorizia":"GO","Trieste":"TS",
+            "Piacenza":"PC","Parma":"PR","Reggio Emilia":"RE","Reggio nell'Emilia":"RE","Modena":"MO",
+            "Bologna":"BO","Ferrara":"FE","Ravenna":"RA","Forlì-Cesena":"FC","Rimini":"RN",
+            "Massa Carrara":"MS","Massa-Carrara":"MS","Lucca":"LU","Pistoia":"PT","Firenze":"FI",
+            "Prato":"PO","Livorno":"LI","Pisa":"PI","Arezzo":"AR","Siena":"SI","Grosseto":"GR",
+            "Perugia":"PG","Terni":"TR","Pesaro e Urbino":"PU","Ancona":"AN","Macerata":"MC",
+            "Ascoli Piceno":"AP","Fermo":"FM","Viterbo":"VT","Rieti":"RI","Roma":"RM","Latina":"LT",
+            "Frosinone":"FR","L'Aquila":"AQ","Teramo":"TE","Pescara":"PE","Chieti":"CH","Isernia":"IS",
+            "Campobasso":"CB","Caserta":"CE","Benevento":"BN","Napoli":"NA","Avellino":"AV",
+            "Salerno":"SA","Foggia":"FG","Bari":"BA","Barletta-Andria-Trani":"BT","Taranto":"TA",
+            "Brindisi":"BR","Lecce":"LE","Potenza":"PZ","Matera":"MT","Cosenza":"CS","Crotone":"KR",
+            "Catanzaro":"CZ","Vibo Valentia":"VV","Reggio Calabria":"RC","Reggio di Calabria":"RC",
+            "Trapani":"TP","Palermo":"PA","Messina":"ME","Agrigento":"AG","Caltanissetta":"CL",
+            "Enna":"EN","Catania":"CT","Ragusa":"RG","Siracusa":"SR","Sassari":"SS","Nuoro":"NU",
+            "Cagliari":"CA","Oristano":"OR","Sud Sardegna":"SU",
+        }
+        df_s24h["sigla_provincia"] = df_s24h["provincia_s24h"].map(S24H_NAME_TO_SIGLA)
+        unmapped = df_s24h[df_s24h["sigla_provincia"].isna()]["provincia_s24h"].tolist()
+        if unmapped:
+            log.warning("S24H non mappate (%d): %s", len(unmapped), unmapped[:5])
+        df_s24h = df_s24h.dropna(subset=["sigla_provincia"])
+        s24h_cols = [c for c in df_s24h.columns if c not in ("provincia_s24h", "sigla_provincia")]
+        df = df.merge(df_s24h[["sigla_provincia"] + s24h_cols], on="sigla_provincia", how="left")
+        log.info("S24H: join su %d province × %d indicatori", len(df_s24h), len(s24h_cols))
+
+        # Score S24H per macro-area (z-score con verso, normalizzato 5-95)
+        S24H_GROUPS = {
+            "score_s24h_sanita": [
+                ("sanita_mortalita_evitabile", "-"),
+                ("sanita_mortalita_tumore", "-"),
+                ("sanita_emigrazione_osp", "-"),
+                ("sanita_medici_mmg", "+"),
+            ],
+            "score_s24h_sicurezza": [
+                ("sic_indice_crim", "-"),
+                ("sic_percezione_insic", "-"),
+                ("sic_mortalita_stradale", "-"),
+            ],
+            "score_s24h_ambiente": [
+                ("amb_aria", "+"),
+                ("amb_clima", "+"),
+                ("amb_ecosistema", "+"),
+                ("amb_diff_rifiuti", "+"),
+                ("amb_aree_protette", "+"),
+                ("amb_rischio_alluvione", "-"),
+                ("amb_rischio_frana", "-"),
+            ],
+            "score_s24h_lavoro": [
+                ("lav_disocc_giovani", "-"),
+                ("lav_non_partec", "-"),
+                ("lav_retribuzione_media", "+"),
+            ],
+            "score_s24h_vita": [
+                ("vita_ristoranti", "+"),
+                ("vita_librerie", "+"),
+                ("vita_palestre", "+"),
+                ("vita_offerta_cult", "+"),
+            ],
+        }
+        for col_out, indicators in S24H_GROUPS.items():
+            zscores = []
+            for col, verso in indicators:
+                if col not in df.columns:
+                    continue
+                s = df[col].astype(float)
+                mu, sd = s.mean(), s.std()
+                if sd > 0:
+                    z = (s - mu) / sd
+                    if verso == "-":
+                        z = -z
+                    zscores.append(z)
+            if zscores:
+                df[col_out] = normalize(sum(zscores) / len(zscores)).round(1)
+            else:
+                df[col_out] = None
+    else:
+        log.warning("sole24h_qdv2025_provincia.csv non trovato — score S24H non calcolato")
+        for k in ("score_s24h_sanita", "score_s24h_sicurezza", "score_s24h_ambiente",
+                  "score_s24h_lavoro", "score_s24h_vita"):
+            df[k] = None
 
     # Pre-calcolo reddito sostenibile per ogni profilo, modalita affitto
     log.info("calcolo reddito sostenibile per %d profili x %d comuni", len(PROFILI), len(df))
@@ -453,6 +561,8 @@ def main() -> int:
         "residuo_single_affitto", "residuo_coppia_2f_affitto",
         "indice_qualita", "omi_disponibile",
         "score_bes", "tasso_delitti_per_10k",
+        "score_s24h_sanita", "score_s24h_sicurezza",
+        "score_s24h_ambiente", "score_s24h_vita",
     ]
     cols_present = [c for c in cols_essenziali if c in df_dash.columns]
 
@@ -488,8 +598,10 @@ def main() -> int:
             "paniere_non_casa": PANIERE_NON_CASA,
             "ipc_regionale": IPC_REGIONALE,
             "indice_pesi": {
-                "residuo": 0.40, "casa": 0.20, "bes": 0.20,
-                "sicurezza": 0.15, "disuguaglianza": 0.05,
+                "residuo": 0.28, "casa": 0.15, "bes": 0.12,
+                "s24h_sicurezza": 0.12, "s24h_sanita": 0.10,
+                "s24h_ambiente": 0.10, "s24h_vita": 0.08,
+                "disuguaglianza": 0.05,
             },
         },
         "comuni": df_dash[cols_present].astype(object).where(

@@ -592,6 +592,8 @@ def build_dashboard():
         "residuo_single_affitto", "residuo_coppia_2f_affitto",
         "indice_qualita", "omi_disponibile",
         "score_bes", "tasso_delitti_per_10k",
+        "score_s24h_sanita", "score_s24h_sicurezza",
+        "score_s24h_ambiente", "score_s24h_vita",
         "lat", "lon",
     ]
 
@@ -628,6 +630,10 @@ def build_dashboard():
             bool(c.get("omi_disponibile")),
             round_val(c.get("score_bes"), 1),
             round_val(c.get("tasso_delitti_per_10k"), 1),
+            round_val(c.get("score_s24h_sanita"), 1),
+            round_val(c.get("score_s24h_sicurezza"), 1),
+            round_val(c.get("score_s24h_ambiente"), 1),
+            round_val(c.get("score_s24h_vita"), 1),
             lat_lon[0] if lat_lon else None,
             lat_lon[1] if lat_lon else None,
         ]
@@ -815,8 +821,12 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
               <option value="prezzo_acq_eur_mq_med">Prezzo acquisto € /mq</option>
               <option value="ratio_p90_p10">Disuguaglianza P90/P10</option>
               <option value="residuo_single_affitto">Residuo netto annuo (single)</option>
-              <option value="score_bes">BES provinciale (salute/istruzione/lavoro/banda)</option>
-              <option value="tasso_delitti_per_10k">Delitti per 10k abitanti</option>
+              <option value="score_bes">BES provinciale (ISTAT)</option>
+              <option value="score_s24h_sanita">Sanità (S24H)</option>
+              <option value="score_s24h_sicurezza">Sicurezza (S24H)</option>
+              <option value="score_s24h_ambiente">Ambiente e clima (S24H)</option>
+              <option value="score_s24h_vita">Cultura e tempo libero (S24H)</option>
+              <option value="tasso_delitti_per_10k">Delitti per 10k ab. (ISTAT)</option>
             </select>
           </label>
           <label class="text-sm"><?php lc_e('Regione'); ?>
@@ -958,7 +968,7 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
       <section class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
         <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('6. Come si calcola l\u2019indice qualità'); ?></h2>
         <div class="mt-6 prose prose-slate max-w-none text-slate-700 leading-relaxed">
-          <p><?php lc_e("L\u2019indice è un punteggio 0-100 che combina cinque dimensioni: <strong>residuo netto disponibile</strong> dopo costo casa, <strong>accessibilità del costo casa</strong>, <strong>servizi BES provinciali</strong> (salute, istruzione, lavoro, banda larga), <strong>sicurezza</strong> (tasso delitti capoluogo) e <strong>disuguaglianza interna</strong> (P90/P10). Pesi: 40% residuo + 20% accessibilità + 20% BES + 15% sicurezza + 5% disuguaglianza. Paniere non-casa modulato per IPC regionale ISTAT."); ?></p>
+          <p><?php lc_e("L\u2019indice è un punteggio 0-100 che combina otto dimensioni provinciali e comunali: <strong>residuo netto disponibile</strong> dopo costo casa, <strong>accessibilità del costo casa</strong>, <strong>servizi BES ISTAT</strong>, <strong>sicurezza</strong>, <strong>sanità</strong>, <strong>ambiente e clima</strong>, <strong>cultura e tempo libero</strong>, <strong>disuguaglianza interna</strong>. Pesi: 28% residuo + 15% casa + 12% BES ISTAT + 12% sicurezza S24H + 10% sanità S24H + 10% ambiente S24H + 8% cultura S24H + 5% disuguaglianza. Paniere non-casa modulato per IPC regionale ISTAT."); ?></p>
           <p class="text-sm text-slate-600 mt-2"><?php lc_e("La mappa è una <strong>coropletica comunale</strong>: ogni poligono e\u2019 un comune italiano, colorato in base all\u2019indicatore selezionato. Stessa logica e geometrie di <a href='/macro/redditi-italiani/' class='text-blue-700 underline'>/macro/redditi-italiani/</a>. Selezionando regione o provincia la vista zooma automaticamente."); ?></p>
 
           <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e('Formula attuale'); ?></h3>
@@ -970,11 +980,15 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
 <span style="color:#fbbf24">score_residuo</span>  = normalize(residuo_netto, 5&deg;-95&deg; percentile, 0-100)
 <span style="color:#fbbf24">score_casa</span>     = 100 &minus; normalize(prezzo_acquisto_OMI, 5&deg;-95&deg; percentile)
 <span style="color:#fbbf24">score_disug</span>    = 100 &minus; normalize(P90 / P10, 5&deg;-95&deg; percentile)
-<span style="color:#fbbf24">score_bes</span>      = normalize(media z-score 11 indicatori BES provinciali)
-<span style="color:#fbbf24">score_sic</span>      = 100 &minus; normalize(delitti per 10k abitanti, capoluogo)
+<span style="color:#fbbf24">score_bes</span>      = normalize(media z-score 11 indicatori BES provinciali ISTAT)
+<span style="color:#fbbf24">s24h_sicurezza</span> = normalize(z-score: indice criminalita, percezione, mortalita stradale)
+<span style="color:#fbbf24">s24h_sanita</span>   = normalize(z-score: mortalita evitabile, mortalita tumore, emigraz., medici)
+<span style="color:#fbbf24">s24h_ambiente</span> = normalize(z-score: aria, clima, ecosist., diff. rifiuti, aree prot., rischio idro)
+<span style="color:#fbbf24">s24h_vita</span>    = normalize(z-score: ristoranti, librerie, palestre, offerta culturale)
 
-<span style="color:#34d399;font-weight:600">indice_qualita = 0,40 &times; score_residuo + 0,20 &times; score_casa
-              + 0,20 &times; score_bes + 0,15 &times; score_sic + 0,05 &times; score_disug</span></pre>
+<span style="color:#34d399;font-weight:600">indice_qualita = 0,28 &times; score_residuo + 0,15 &times; score_casa + 0,12 &times; score_bes
+              + 0,12 &times; s24h_sicurezza + 0,10 &times; s24h_sanita
+              + 0,10 &times; s24h_ambiente + 0,08 &times; s24h_vita + 0,05 &times; score_disug</span></pre>
 
           <h3 class="text-lg font-semibold text-slate-900 mt-4"><?php lc_e('Peculiarità e scelte metodologiche'); ?></h3>
           <ul class="mt-2 space-y-1.5 text-sm">
@@ -985,7 +999,11 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
             <li><strong>Normalizzazione robusta</strong>: usiamo 5° e 95° percentile come bounds (non min/max), per non far dominare gli outlier. I comuni più ricchi/poveri saturano a 100 o 0.</li>
             <li><strong>Verso degli indicatori</strong>: alcuni hanno verso positivo (residuo netto, BES, occupazione: alto = meglio), altri negativo (prezzo acquisto, tasso delitti, NEET, P90/P10: basso = meglio). Il punteggio finale somma i contributi sempre nel verso "alto = meglio" via inversione esplicita dove serve. Comuni come Riccione e Milano scendono perché il costo casa erode il residuo, non perché siano oggettivamente "scomodi".</li>
             <li><strong>Servizi BES (provinciale)</strong>: media z-score di 11 indicatori ISTAT 2024 a livello NUTS-3 (provincia): speranza di vita, istruzione secondaria/terziaria, NEET, livello inadeguato di numeracy e literacy (studenti grade 8), occupazione e non-partecipazione giovani, affluenza elettorale regionale, consigliere donne, banda larga. Verso "+" o "-" per ogni indicatore. Score normalizzato 0-100. Province soppresse (Olbia-Tempio, Ogliastra, Medio Campidano, Carbonia-Iglesias) mediate con i successori.</li>
-            <li><strong>Sicurezza (provinciale via capoluogo)</strong>: tasso totale delitti per 10k abitanti del comune capoluogo, anno 2024 (somma di 55 tipologie ISTAT: omicidi, furti, rapine, violenze sessuali, cybercrime, ecc.). Applicato come proxy a tutti i comuni della provincia, perché ISTAT non pubblica il dato per i comuni minori. I capoluoghi grandi (Milano, Roma, Napoli, Firenze) hanno tassi più alti perché concentrano la criminalità denunciata della provincia, non perché siano in assoluto più pericolosi.</li>
+            <li><strong>Sicurezza (Sole 24 Ore QDV2025, provinciale)</strong>: media z-score di 3 sotto-indicatori: indice di criminalita\u2019 composito, percezione di insicurezza (indagine ISTAT), mortalita\u2019 stradale extraurbana. Piu\u2019 ricco del solo tasso delitti grezzo: separa criminalita\u2019 patrimoniale, percezione e rischio stradale.</li>
+            <li><strong>Sanita\u2019 (S24H QDV2025, provinciale)</strong>: media z-score di 4 sotto-indicatori: mortalita\u2019 evitabile, mortalita\u2019 per tumore, emigrazione ospedaliera (pazienti che migrano verso altre province per cure), medici di medicina generale per abitante. Mostra la qualita\u2019 effettiva del SSN territoriale, non solo l\u2019offerta.</li>
+            <li><strong>Ambiente e clima (S24H QDV2025, provinciale)</strong>: media z-score di 7 sotto-indicatori: indice di salubrita\u2019 dell\u2019aria, indice del clima, ecosistema urbano, raccolta differenziata, aree protette, rischio alluvione, rischio frana. Sostituisce la lacuna ARPA/ISPRA non integrata direttamente.</li>
+            <li><strong>Cultura e tempo libero (S24H QDV2025, provinciale)</strong>: media z-score di ristoranti, librerie, palestre/piscine, offerta culturale per abitante. Cattura la "vivacita\u2019 urbana" come proxy di qualita\u2019 del tempo libero.</li>
+            <li><strong>Tasso delitti grezzo (ISTAT, capoluogo)</strong>: indicatore secondario, mostrato in dettaglio comune ma NON nel composito (sostituito dal piu\u2019 ricco S24H sicurezza). Aggrega 55 tipologie ISTAT per il comune capoluogo, applicato come proxy provinciale.</li>
             <li><strong>Comuni rumorosi</strong>: con &lt; 500 contribuenti la mediana è instabile. Sono nel dropdown ma flaggati nel dettaglio.</li>
           </ul>
 
@@ -997,7 +1015,31 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
             <li><strong>Soggettivita\u2019</strong>: l\u2019indice non valuta dimensioni soggettive come socialita\u2019, vivacita\u2019 culturale, opportunita\u2019 di lavoro per profili specifici, presenza di comunita\u2019 di pari (es. genitori giovani, pensionati attivi, espatriati).</li>
           </ul>
 
-          <p class="text-sm text-slate-600 mt-4"><?php lc_e("L\u2019indice è uno strumento descrittivo, non normativo. Risponde alla domanda: «dove, in media, un reddito mediano si traduce in più potere d\u2019acquisto residuo, in un contesto provinciale con servizi BES soddisfacenti, sicurezza buona e disuguaglianza interna contenuta?». Non sostituisce la valutazione personale: clima, lavoro, famiglia, comunita\u2019, qualita\u2019 dei singoli servizi locali pesano in modo diverso per ogni individuo. Usalo per orientarti, non per decidere."); ?></p>
+          <p class="text-sm text-slate-600 mt-4"><?php lc_e("L\u2019indice è uno strumento descrittivo, non normativo. Risponde alla domanda: «dove, in media, un reddito mediano si traduce in più potere d\u2019acquisto residuo, in un contesto con servizi sufficienti, sicurezza buona e qualita\u2019 di vita decente?». Non sostituisce la valutazione personale: clima, lavoro, famiglia, comunita\u2019, preferenze sulla singola citta\u2019 pesano in modo diverso per ogni individuo."); ?></p>
+
+          <h3 class="text-lg font-semibold text-slate-900 mt-6"><?php lc_e("Differenza rispetto a 'Qualità della Vita' del Sole 24 Ore"); ?></h3>
+          <div class="mt-2 text-sm text-slate-700 space-y-2">
+            <p>Il <a href="https://lab24.ilsole24ore.com/qualita-della-vita/" target="_blank" rel="noopener" class="text-blue-700 underline">QDV del Sole 24 Ore</a> e\u2019 una classifica diversa dalla nostra. Risponde a una domanda diversa.</p>
+            <table class="w-full text-xs mt-2 border-collapse">
+              <thead><tr class="bg-slate-100 text-slate-700">
+                <th class="border border-slate-200 px-2 py-1 text-left">Aspetto</th>
+                <th class="border border-slate-200 px-2 py-1 text-left">Qui (Bertonelli)</th>
+                <th class="border border-slate-200 px-2 py-1 text-left">QDV Sole 24 Ore</th>
+              </tr></thead>
+              <tbody>
+                <tr><td class="border border-slate-200 px-2 py-1"><b>Unita\u2019 di analisi</b></td><td class="border border-slate-200 px-2 py-1">comune (7.896)</td><td class="border border-slate-200 px-2 py-1">provincia (107)</td></tr>
+                <tr><td class="border border-slate-200 px-2 py-1"><b>N indicatori</b></td><td class="border border-slate-200 px-2 py-1">~14 macro (residuo, casa, BES, S24H, P90/P10)</td><td class="border border-slate-200 px-2 py-1">90 indicatori in 6 macro-aree</td></tr>
+                <tr><td class="border border-slate-200 px-2 py-1"><b>Aggregazione</b></td><td class="border border-slate-200 px-2 py-1">z-score, normalizz. 5\u00b0-95\u00b0 percentile</td><td class="border border-slate-200 px-2 py-1">ranking ordinale, somma posizioni</td></tr>
+                <tr><td class="border border-slate-200 px-2 py-1"><b>Pesi</b></td><td class="border border-slate-200 px-2 py-1">non uniformi (28% residuo, 15% casa, ...)</td><td class="border border-slate-200 px-2 py-1">~1% per indicatore (uniformi)</td></tr>
+                <tr><td class="border border-slate-200 px-2 py-1"><b>Domanda di fondo</b></td><td class="border border-slate-200 px-2 py-1">"Dove il reddito mediano basta per vivere bene?"</td><td class="border border-slate-200 px-2 py-1">"Dove la provincia offre la migliore esperienza di vita complessiva?"</td></tr>
+                <tr><td class="border border-slate-200 px-2 py-1"><b>Granularita\u2019 territoriale</b></td><td class="border border-slate-200 px-2 py-1">distingue Corsico da Milano</td><td class="border border-slate-200 px-2 py-1">accorpa hinterland nel capoluogo</td></tr>
+                <tr><td class="border border-slate-200 px-2 py-1"><b>Cluster non coperti da noi</b></td><td class="border border-slate-200 px-2 py-1">demografia avanzata, indici per fasce (anziani/giovani/donne/bambini), giustizia, fisco locale</td><td class="border border-slate-200 px-2 py-1">tutti coperti</td></tr>
+              </tbody>
+            </table>
+            <p class="mt-2">Cosa abbiamo <em>preso</em> da S24H: 24 indicatori provinciali distillati in 4 macro-aree (sanita\u2019, sicurezza, ambiente/clima, cultura/tempo libero). Sostituiscono o integrano i dati ISTAT BES dove S24H e\u2019 piu\u2019 ricco (es. sanita\u2019: 4 misure vs 1 BES; sicurezza: 3 sotto-indicatori vs solo tasso delitti).</p>
+            <p class="mt-2">Cosa <em>non</em> prendiamo: indicatori soft di esperienza territoriale che pesano nel QDV S24H (qualita\u2019 della vita di anziani/giovani/donne/bambini come 4 sotto-classifiche, indice di lettura, indice di sportivita\u2019, ecc.). La nostra logica resta economic-housing-centered: il composito misura prima di tutto se il reddito locale basta a vivere dignitosamente, integrato dal contesto.</p>
+            <p class="mt-2 text-xs text-slate-500">Fonte S24H: <a href="https://github.com/IlSole24ORE/QDV2025" target="_blank" rel="noopener" class="text-blue-700 underline">github.com/IlSole24ORE/QDV2025</a> (CC-BY-NC-4.0). Attribuzione obbligatoria.</p>
+          </div>
         </div>
       </section>
 
