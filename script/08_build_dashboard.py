@@ -734,6 +734,7 @@ if ($og_image) {{ $pin .= '&media=' . rawurlencode($og_image); }}
 $qvi_v = (int) @filemtime(__FILE__);
 $payload_url = content_url('/uploads/qualita-vita/comuni-essential.json') . '?v=' . $qvi_v;
 $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=' . $qvi_v;
+$payload_storia_url = content_url('/uploads/qualita-vita/comuni-storia.json') . '?v=' . $qvi_v;
 ?><!doctype html>
 <html lang="<?php echo $_lang; ?>">
 <head>
@@ -962,6 +963,7 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
       <section id="qvi-dettaglio" class="mt-8 glass shadow-float rounded-3xl p-8 md:p-10">
         <h2 class="text-2xl md:text-3xl font-semibold tracking-tight text-slate-950"><?php lc_e('5. Dettaglio comune'); ?></h2>
         <div id="qvi-dettaglio-body" class="mt-6 text-sm text-slate-700"><?php lc_e('Clicca un punto sulla mappa o un comune in classifica per vedere i dettagli.'); ?></div>
+        <div id="qvi-dettaglio-storia" class="mt-6"></div>
       </section>
 
       <!-- 6. METODOLOGIA INDICE QUALITÀ -->
@@ -1065,6 +1067,7 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
 (function() {{
   const PAYLOAD_URL = <?php echo wp_json_encode($payload_url); ?>;
   const PAYLOAD_FULL_URL = <?php echo wp_json_encode($payload_full_url); ?>;
+  const PAYLOAD_STORIA_URL = <?php echo wp_json_encode($payload_storia_url); ?>;
   const PLOTLY_URL = "https://cdn.plot.ly/plotly-2.27.0.min.js";
   const PALETTE = {{ orange: "#F17820", blue: "#00355F", green: "#1b7f3a", red: "#c0392b", neutral: "#475569" }};
 
@@ -1112,6 +1115,14 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
       for (let i = 0; i < cols.length; i++) o[cols[i]] = r[i];
       return o;
     }});
+  }}
+
+  // === Lazy loader serie storica (2017-2024) ===
+  let _storiaPromise = null;
+  function loadStoria() {{
+    if (_storiaPromise) return _storiaPromise;
+    _storiaPromise = fetch(PAYLOAD_STORIA_URL).then(r => r.json());
+    return _storiaPromise;
   }}
 
   // === Lazy loader full payload ===
@@ -1555,10 +1566,52 @@ $payload_full_url = content_url('/uploads/qualita-vita/comuni-full.json') . '?v=
         `<div class="mt-1 text-xs text-slate-500">Dato del comune capoluogo (proxy provinciale), 2024</div></div>` +
         `<div class="md:col-span-2 rounded-xl bg-slate-50 border border-slate-200 p-3"><div class="text-xs uppercase text-slate-500 tracking-wide">Indice qualità</div>` +
         `<div class="mt-1 text-2xl font-bold text-slate-900">${{fmtN(c.indice_qualita,1)}}/100</div>` +
-        `<div class="mt-1 text-xs text-slate-600">Composito 40% residuo + 20% accessibilità casa + 20% BES + 15% sicurezza + 5% disuguaglianza</div></div>` +
+        `<div class="mt-1 text-xs text-slate-600">Composito 28% residuo + 15% casa + 12% BES + 12% S24H sicurezza + 10% S24H sanità + 10% S24H ambiente + 8% S24H vita + 5% disug.</div></div>` +
         `</div>`;
       document.getElementById("qvi-dettaglio-body").innerHTML = detailHtml;
       document.getElementById("qvi-dettaglio").scrollIntoView({{behavior:"smooth", block:"nearest"}});
+
+      // Serie storica reddito 2017-2024 (lazy fetch + Plotly mini chart)
+      const storiaEl = document.getElementById("qvi-dettaglio-storia");
+      storiaEl.innerHTML = '<div class="text-xs text-slate-500 italic">Caricamento serie storica…</div>';
+      Promise.all([loadStoria(), loadPlotly()]).then(([storia]) => {{
+        const data = storia.data[c.codice_istat];
+        if (!data) {{ storiaEl.innerHTML = '<div class="text-xs text-slate-500 italic">Serie storica non disponibile per questo comune.</div>'; return; }}
+        const anni = storia.anni;
+        const [mediana, p10, p90, pct_low, mediana_reale] = data;
+        const tracesA = [
+          {{x: anni, y: p90, name: 'P90', mode: 'lines+markers', line: {{color: '#1b7f3a', width: 2}}, marker: {{size: 5}}}},
+          {{x: anni, y: mediana, name: 'Mediana', mode: 'lines+markers', line: {{color: '#0f172a', width: 2.5}}, marker: {{size: 6}}}},
+          {{x: anni, y: mediana_reale, name: 'Mediana reale (€ 2024, HICP)', mode: 'lines+markers', line: {{color: '#F17820', width: 2, dash: 'dot'}}, marker: {{size: 5}}}},
+          {{x: anni, y: p10, name: 'P10', mode: 'lines+markers', line: {{color: '#b2182b', width: 2}}, marker: {{size: 5}}}},
+        ];
+        const tracesB = [
+          {{x: anni, y: pct_low, name: '% sotto 15k €', mode: 'lines+markers', line: {{color: '#7c2d12', width: 2}}, marker: {{size: 5}}}},
+        ];
+        storiaEl.innerHTML =
+          `<h4 class="text-base font-semibold text-slate-900 mt-2 mb-2">Andamento 2017-2024</h4>` +
+          `<div class="grid md:grid-cols-2 gap-3">` +
+          `<div id="qvi-stor-redd" style="min-height:280px;"></div>` +
+          `<div id="qvi-stor-pct" style="min-height:280px;"></div>` +
+          `</div>` +
+          `<p class="text-xs text-slate-500 mt-2">Reddito complessivo MEF: nominale (linee piene) e reale (linea arancio tratteggiata, deflattore HICP base 2024). Mediana reale evidenzia se il reddito tiene il passo dell\\u2019inflazione.</p>`;
+        const layoutA = {{
+          margin: {{t:20, b:30, l:50, r:10}}, height:280, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
+          legend: {{orientation: 'h', y: -0.15, font: {{size: 10}}}},
+          xaxis: {{title:'', tickfont: {{size: 10}}}}, yaxis: {{title:'€', tickfont: {{size: 10}}, tickformat:',.0f'}},
+          title: {{text: 'Distribuzione redditi', font:{{size:13, color:'#0f172a'}}, x:0.02, xanchor:'left'}}
+        }};
+        const layoutB = {{
+          margin: {{t:20, b:30, l:50, r:10}}, height:280, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
+          legend: {{orientation: 'h', y: -0.15, font: {{size: 10}}}},
+          xaxis: {{title:'', tickfont: {{size: 10}}}}, yaxis: {{title:'%', tickfont: {{size: 10}}}},
+          title: {{text: 'Quota redditi bassi', font:{{size:13, color:'#0f172a'}}, x:0.02, xanchor:'left'}}
+        }};
+        Plotly.newPlot('qvi-stor-redd', tracesA, layoutA, {{displayModeBar:false, responsive:true}});
+        Plotly.newPlot('qvi-stor-pct', tracesB, layoutB, {{displayModeBar:false, responsive:true}});
+      }}).catch(err => {{
+        storiaEl.innerHTML = '<div class="text-xs text-rose-700">Errore serie storica: ' + err + '</div>';
+      }});
 
       // Lazy fetch OMI: solo se non disponibile nel payload
       if (!c.omi_disponibile || c.prezzo_acq_eur_mq_med == null) {{
