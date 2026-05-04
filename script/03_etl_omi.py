@@ -4,8 +4,7 @@ ETL OMI: scarica le quotazioni immobiliari per tutti i comuni italiani via
 API GEOPOI (Agenzia delle Entrate) e produce un valore aggregato per comune.
 
 Approccio: scrape dei medesimi endpoint pubblici che alimentano la
-consultazione web (https://wwwt.agenziaentrate.gov.it/geopoi_omi/index.htm),
-identici a quelli usati da internal-tooling/inc/omi-fetcher.php.
+consultazione web (https://wwwt.agenziaentrate.gov.it/geopoi_omi/index.htm).
 
 Nessuna autenticazione richiesta. Throttle 200ms per non sovraccaricare
 il server. Cache su disco per ogni comune (riusabile tra run).

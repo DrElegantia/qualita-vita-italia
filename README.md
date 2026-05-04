@@ -72,10 +72,8 @@ qualita-vita-italia/
 │       ├── comuni.json           payload completo dashboard
 │       ├── classifica.json       ranking pre-calcolato
 │       └── comuni_geo.geojson    geometrie semplificate
-├── automation/
-│   └── dashboard.qualita-vita.plist LaunchAgent semestrale + annuale
 └── wp-integration/
-    ├── omi-fetcher.php           porting da internal-tooling (ub_omi_*)
+    ├── omi-fetcher.php           fetcher OMI server-side
     ├── reddito-sostenibile.js    calcolatore client-side
     └── dettaglio-comune.js       pannello comune con OMI lazy
 ```
